@@ -23,6 +23,7 @@ import {
   Plus,
   Loader2,
   RotateCcw,
+  Pencil,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event, Round, Team, Score, TeamWithScores, ActionType } from '../types';
@@ -65,7 +66,7 @@ type SortKey = 'name' | 'totalScore' | 'roundScore';
 type FilterMode = 'all' | 'top5';
 
 const inputCls =
-  'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-lg font-bold text-white placeholder-slate-500 outline-none transition-all focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20';
+  'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-lg font-bold text-white placeholder-slate-500 outline-none transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20';
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -109,6 +110,23 @@ export default function EventRound() {
   } | null>(null);
   const [undoing, setUndoing] = useState(false);
   const undoTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ---- Edit score state ----
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingScore, setEditingScore] = useState<{
+    scoreId: string;
+    teamName: string;
+    actionType: ActionType;
+    currentPoints: number;
+  } | null>(null);
+  const [editPoints, setEditPoints] = useState('');
+
+  // ---- Tiebreaker state ----
+  const [tiebreakerMode, setTiebreakerMode] = useState(false);
+  const [tiebreakerTeamIds, setTiebreakerTeamIds] = useState<Set<string>>(new Set());
+
+  // ---- Refs ----
+  const autoCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roundDropdownRef = useRef<HTMLDivElement>(null);
@@ -168,21 +186,33 @@ export default function EventRound() {
 
   const questionHistory = useMemo(() => {
     if (!currentRoundId) return [];
-    const roundScores = scores.filter((s) => s.round_id === currentRoundId && s.winning_team_id);
-    const map = new Map<number, { teamName: string; actionType: ActionType; points: number }>();
+    const roundScores = scores.filter((s) => s.round_id === currentRoundId);
+    const map = new Map<number, {
+      questionNumber: number;
+      actions: { scoreId: string; teamId: string; teamName: string; actionType: ActionType; points: number }[];
+      winnerTeamName: string | null;
+    }>();
+
     roundScores.forEach((s) => {
-      const team = teams.find((t) => t.id === s.winning_team_id);
-      if (team && !map.has(s.question_number)) {
-        map.set(s.question_number, {
-          teamName: team.name,
-          actionType: s.action_type,
-          points: s.points,
-        });
+      const team = teams.find((t) => t.id === s.team_id);
+      if (!map.has(s.question_number)) {
+        map.set(s.question_number, { questionNumber: s.question_number, actions: [], winnerTeamName: null });
+      }
+      const entry = map.get(s.question_number)!;
+      entry.actions.push({
+        scoreId: s.id,
+        teamId: s.team_id,
+        teamName: team?.name ?? 'Unknown',
+        actionType: s.action_type,
+        points: s.points,
+      });
+      if (s.winning_team_id && !entry.winnerTeamName) {
+        const winnerTeam = teams.find((t) => t.id === s.winning_team_id);
+        entry.winnerTeamName = winnerTeam?.name ?? null;
       }
     });
-    return Array.from(map.entries())
-      .sort(([a], [b]) => a - b)
-      .map(([qNum, data]) => ({ questionNumber: qNum, ...data }));
+
+    return Array.from(map.values()).sort((a, b) => a.questionNumber - b.questionNumber);
   }, [scores, currentRoundId, teams]);
 
   const overallLeaderboard = useMemo(() => {
@@ -191,6 +221,28 @@ export default function EventRound() {
 
   const roundLeaderboard = useMemo(() => {
     return [...teamsWithScores].sort((a, b) => b.roundScore - a.roundScore);
+  }, [teamsWithScores]);
+
+  // Detect ties in overall scores (only top 3 positions)
+  const tiedTeamsInfo = useMemo(() => {
+    const sorted = [...teamsWithScores].sort((a, b) => b.totalScore - a.totalScore);
+    // Tie-aware ranking
+    let rank = 1;
+    const ranked = sorted.map((t, i) => {
+      if (i > 0 && t.totalScore < sorted[i - 1].totalScore) rank = i + 1;
+      return { ...t, rank };
+    });
+    // Only consider teams in top 3 positions
+    const top3 = ranked.filter(t => t.rank <= 3);
+    const scoreGroups = new Map<number, string[]>();
+    top3.forEach(t => {
+      const existing = scoreGroups.get(t.totalScore) || [];
+      existing.push(t.id);
+      scoreGroups.set(t.totalScore, existing);
+    });
+    const tiedIds = new Set<string>();
+    scoreGroups.forEach((ids) => { if (ids.length > 1) ids.forEach((id) => tiedIds.add(id)); });
+    return { hasTies: tiedIds.size > 0, tiedTeamIds: tiedIds };
   }, [teamsWithScores]);
 
   // ---- Show feedback toast ----
@@ -298,6 +350,9 @@ export default function EventRound() {
         .eq('id', lastAction.scoreId);
       if (error) throw error;
 
+      // Cancel auto-complete if undoing
+      if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
+
       if (lastAction.wasPositive && event) {
         const prevQ = event.current_question - 1;
         await supabase
@@ -324,7 +379,7 @@ export default function EventRound() {
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (bonusModalOpen || leaderboardOpen) return;
+      if (bonusModalOpen || leaderboardOpen || editModalOpen) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -346,16 +401,62 @@ setLeaderboardOpen((v) => !v);
         setShortcutsOpen(false);
         setLeaderboardOpen(false);
         setBonusModalOpen(false);
+        setEditModalOpen(false);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [bonusModalOpen, leaderboardOpen, handleUndoScore]);
+  }, [bonusModalOpen, leaderboardOpen, editModalOpen, handleUndoScore]);
+
+  // ---- Auto-complete round (used after last question) ----
+  const autoCompleteRound = useCallback(async () => {
+    if (!currentRound || !eventId || !event) return;
+    setSubmitting(true);
+    try {
+      await supabase.from('rounds').update({ status: 'completed' }).eq('id', currentRound.id);
+
+      const nextRound = rounds.find((r) => r.round_number === currentRound.round_number + 1);
+
+      if (nextRound) {
+        await supabase.from('rounds').update({ status: 'active' }).eq('id', nextRound.id);
+        await supabase.from('events').update({ current_round_id: nextRound.id, current_question: 1 }).eq('id', eventId);
+
+        setRounds((prev) =>
+          prev.map((r) => {
+            if (r.id === currentRound.id) return { ...r, status: 'completed' };
+            if (r.id === nextRound.id) return { ...r, status: 'active' };
+            return r;
+          })
+        );
+        setCurrentRoundId(nextRound.id);
+        setEvent((prev) => (prev ? { ...prev, current_round_id: nextRound.id, current_question: 1 } : prev));
+        navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
+      } else {
+        await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
+        setRounds((prev) =>
+          prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
+        );
+        setEvent((prev) => (prev ? { ...prev, status: 'completed' } : prev));
+        navigate(`/events/${eventId}/final-stats`);
+      }
+    } catch (err: unknown) {
+      showFeedback(`Error: ${err instanceof Error ? err.message : 'Failed to complete round'}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [currentRound, eventId, event, rounds, showFeedback, navigate]);
 
   // ---- Scoring action ----
   const handleScore = useCallback(
     async (teamId: string, actionType: ActionType, customPoints?: number) => {
       if (!event || !currentRound || !eventId || submitting) return;
+
+      // In tiebreaker mode, only allow scoring for tiebreaker teams
+      if (tiebreakerMode && !tiebreakerTeamIds.has(teamId)) {
+        showFeedback('Only tiebreaker teams can score right now');
+        return;
+      }
+
       setSubmitting(true);
 
       let points = 0;
@@ -382,9 +483,17 @@ setLeaderboardOpen((v) => !v);
 
       const isPositive = ['bounce', 'pounce_plus', 'buzzer', 'bonus'].includes(actionType) && points > 0;
 
-      // Block positive actions that advance question counter beyond limit
-      if (isPositive && event.current_question > currentRound.question_count) {
+      // Block positive actions that advance question counter beyond limit (skip in tiebreaker mode)
+      if (!tiebreakerMode && isPositive && event.current_question > currentRound.question_count) {
         showFeedback(`All ${currentRound.question_count} questions answered — complete the round`);
+        setSubmitting(false);
+        return;
+      }
+
+      // In tiebreaker mode, block if max tiebreaker questions exceeded
+      const maxTiebreakerQ = currentRound.question_count + (currentRound.tiebreaker_questions ?? 3);
+      if (tiebreakerMode && isPositive && event.current_question > maxTiebreakerQ) {
+        showFeedback(`All ${currentRound.tiebreaker_questions ?? 3} tiebreaker questions used — end tiebreaker`);
         setSubmitting(false);
         return;
       }
@@ -402,16 +511,72 @@ setLeaderboardOpen((v) => !v);
 
         if (insertError) throw insertError;
 
+        let feedbackOverride: string | null = null;
+
         if (isPositive) {
           const nextQ = event.current_question + 1;
           await supabase.from('events').update({ current_question: nextQ }).eq('id', eventId);
           setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
+
+          // Compute updated totals including this new score (state hasn't updated from realtime yet)
+          const updatedTotals = new Map<string, number>();
+          teams.forEach(t => {
+            const total = scores.filter(s => s.team_id === t.id).reduce((sum, s) => sum + s.points, 0);
+            updatedTotals.set(t.id, total);
+          });
+          updatedTotals.set(teamId, (updatedTotals.get(teamId) || 0) + points);
+
+          if (!tiebreakerMode && nextQ > currentRound.question_count) {
+            // All regular questions answered — check for ties in top 3 before auto-completing
+            const sortedEntries = Array.from(updatedTotals.entries()).sort(([, a], [, b]) => b - a);
+            let rnk = 1;
+            const ranked = sortedEntries.map(([id, score], i) => {
+              if (i > 0 && score < sortedEntries[i - 1][1]) rnk = i + 1;
+              return { id, score, rank: rnk };
+            });
+            const top3 = ranked.filter(r => r.rank <= 3);
+            const scoreGroups = new Map<number, string[]>();
+            top3.forEach(r => {
+              const existing = scoreGroups.get(r.score) || [];
+              existing.push(r.id);
+              scoreGroups.set(r.score, existing);
+            });
+            const tiedIds = new Set<string>();
+            scoreGroups.forEach((ids) => { if (ids.length > 1) ids.forEach(id => tiedIds.add(id)); });
+
+            if (tiedIds.size > 0) {
+              // Ties detected — auto-enter tiebreaker mode instead of completing
+              setTiebreakerMode(true);
+              setTiebreakerTeamIds(tiedIds);
+              const tiedNames = teams.filter(t => tiedIds.has(t.id)).map(t => t.name).join(', ');
+              feedbackOverride = `Tie detected! Tiebreaker: ${tiedNames}`;
+            } else {
+              // No ties — auto-complete round
+              if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
+              autoCompleteTimeout.current = setTimeout(() => autoCompleteRound(), 800);
+            }
+          } else if (tiebreakerMode) {
+            // During tiebreaker — check if ties among tiebreaker teams are resolved
+            const tiebreakerScores = Array.from(tiebreakerTeamIds).map(id => updatedTotals.get(id) || 0);
+            const allUnique = new Set(tiebreakerScores).size === tiebreakerScores.length;
+
+            if (allUnique) {
+              // Ties resolved — auto-end tiebreaker and complete round
+              feedbackOverride = 'Tie broken! Completing round...';
+              if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
+              autoCompleteTimeout.current = setTimeout(() => {
+                setTiebreakerMode(false);
+                setTiebreakerTeamIds(new Set());
+                autoCompleteRound();
+              }, 800);
+            }
+          }
         }
 
         const team = teams.find((t) => t.id === teamId);
         const teamName = team?.name ?? 'Team';
         const sign = points >= 0 ? '+' : '';
-        showFeedback(`${teamName}: ${sign}${points} pts (${actionType.replace('_', ' ')})`);
+        showFeedback(feedbackOverride ?? `${teamName}: ${sign}${points} pts (${actionType.replace('_', ' ')})`);
 
         // Track for undo
         if (undoTimeout.current) clearTimeout(undoTimeout.current);
@@ -432,8 +597,31 @@ setLeaderboardOpen((v) => !v);
         setSubmitting(false);
       }
     },
-    [event, currentRound, eventId, teams, showFeedback, submitting]
+    [event, currentRound, eventId, teams, scores, showFeedback, submitting, tiebreakerMode, tiebreakerTeamIds, autoCompleteRound]
   );
+
+  // ---- Edit score ----
+  const handleEditScore = useCallback(async () => {
+    if (!editingScore || !eventId) return;
+    const newPts = parseInt(editPoints);
+    if (isNaN(newPts)) return;
+    setSubmitting(true);
+    try {
+      const { error: updateError } = await supabase
+        .from('scores')
+        .update({ points: newPts })
+        .eq('id', editingScore.scoreId);
+      if (updateError) throw updateError;
+      showFeedback(`Updated ${editingScore.teamName}: ${newPts} pts`);
+      setEditModalOpen(false);
+      setEditingScore(null);
+      setEditPoints('');
+    } catch (err: unknown) {
+      showFeedback(`Edit failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [editingScore, editPoints, eventId, showFeedback]);
 
   // ---- Bonus submit ----
   const handleBonusSubmit = useCallback(() => {
@@ -588,12 +776,26 @@ setLeaderboardOpen((v) => !v);
     }
   }, [eventId, currentRound, isLastRound, navigate]);
 
+  // ---- Start tiebreaker ----
+  const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
+    setTiebreakerMode(true);
+    setTiebreakerTeamIds(tiedIds);
+    showFeedback(`Tiebreaker started for ${tiedIds.size} teams`);
+  }, [showFeedback]);
+
+  // ---- End tiebreaker ----
+  const handleEndTiebreaker = useCallback(() => {
+    setTiebreakerMode(false);
+    setTiebreakerTeamIds(new Set());
+    autoCompleteRound();
+  }, [autoCompleteRound]);
+
   // ---- Loading / Error states ----
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
           <p className="text-sm text-slate-400">Loading event...</p>
         </motion.div>
       </div>
@@ -638,7 +840,7 @@ setLeaderboardOpen((v) => !v);
               <div className="relative" ref={roundDropdownRef}>
                 <button
                   onClick={() => setRoundDropdownOpen((v) => !v)}
-                  className="mt-0.5 flex items-center gap-1.5 text-sm text-violet-400 hover:text-violet-300 transition-colors"
+                  className="mt-0.5 flex items-center gap-1.5 text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
                 >
                   <span>{currentRound?.round_name ?? 'Select Round'}</span>
                   <ChevronDown className={`h-3.5 w-3.5 transition-transform ${roundDropdownOpen ? 'rotate-180' : ''}`} />
@@ -658,7 +860,7 @@ setLeaderboardOpen((v) => !v);
                           onClick={() => switchRound(r.id)}
                           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                             r.id === currentRoundId
-                              ? 'bg-violet-500/20 text-violet-300'
+                              ? 'bg-cyan-500/20 text-cyan-300'
                               : 'text-white/70 hover:bg-white/[0.05] hover:text-white'
                           }`}
                         >
@@ -689,13 +891,25 @@ setLeaderboardOpen((v) => !v);
               key={event.current_question}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
-              className="flex items-center gap-2 rounded-xl border border-violet-500/20 bg-violet-500/10 px-4 py-2"
+              className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
+                tiebreakerMode
+                  ? 'border-amber-500/20 bg-amber-500/10'
+                  : 'border-cyan-500/20 bg-cyan-500/10'
+              }`}
             >
-              <Hash className="h-4 w-4 text-violet-400" />
-              <span className="text-sm font-medium text-slate-400">Question</span>
-              <span className="text-xl font-bold text-violet-300">{(currentRound&&(event.current_question>currentRound?.question_count))?(event.current_question-1):(event.current_question)}</span>
+              <Hash className={`h-4 w-4 ${tiebreakerMode ? 'text-amber-400' : 'text-cyan-400'}`} />
+              <span className="text-sm font-medium text-slate-400">
+                {tiebreakerMode ? 'Tiebreaker Q' : 'Question'}
+              </span>
+              <span className={`text-xl font-bold ${tiebreakerMode ? 'text-amber-300' : 'text-cyan-300'}`}>
+                {tiebreakerMode
+                  ? event.current_question - (currentRound?.question_count ?? 0)
+                  : event.current_question}
+              </span>
               {currentRound && (
-                <span className="text-xs text-slate-500">/ {currentRound.question_count}</span>
+                <span className="text-xs text-slate-500">
+                  / {tiebreakerMode ? (currentRound.tiebreaker_questions ?? 3) : currentRound.question_count}
+                </span>
               )}
             </motion.div>
           </div>
@@ -737,7 +951,7 @@ setLeaderboardOpen((v) => !v);
                   }}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     sortKey === key
-                      ? 'bg-violet-500/20 text-violet-300'
+                      ? 'bg-cyan-500/20 text-cyan-300'
                       : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-300'
                   }`}
                 >
@@ -751,7 +965,7 @@ setLeaderboardOpen((v) => !v);
               <button
                 onClick={() => setFilterMode('all')}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  filterMode === 'all' ? 'bg-violet-500/20 text-violet-300' : 'text-slate-500 hover:bg-white/[0.05]'
+                  filterMode === 'all' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:bg-white/[0.05]'
                 }`}
               >
                 All
@@ -759,7 +973,7 @@ setLeaderboardOpen((v) => !v);
               <button
                 onClick={() => setFilterMode('top5')}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  filterMode === 'top5' ? 'bg-violet-500/20 text-violet-300' : 'text-slate-500 hover:bg-white/[0.05]'
+                  filterMode === 'top5' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:bg-white/[0.05]'
                 }`}
               >
                 Top 5
@@ -773,6 +987,38 @@ setLeaderboardOpen((v) => !v);
       {/*  MAIN CONTENT                                                      */}
       {/* ================================================================== */}
       <div className="relative z-10 mx-auto flex max-w-7xl gap-0 px-4 py-6 sm:px-6">
+        {/* ---- Tiebreaker Banner ---- */}
+        {tiebreakerMode && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="fixed top-0 left-0 right-0 z-[55] border-b border-amber-500/30 bg-amber-500/10 backdrop-blur-xl"
+          >
+            <div className="mx-auto max-w-7xl flex items-center justify-between px-4 py-2.5 sm:px-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-amber-500/20">
+                  <Zap className="h-4 w-4 text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-amber-300">Tiebreaker Mode</p>
+                  <p className="text-[10px] text-amber-400/60">
+                    {tiebreakerTeamIds.size} teams &middot; Tiebreaker Q{event.current_question - (currentRound?.question_count ?? 0)}/{currentRound?.tiebreaker_questions ?? 3}
+                  </p>
+                </div>
+              </div>
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleEndTiebreaker}
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-1.5 text-xs font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-40"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                End Tiebreaker
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
         {/* ---- Question history sidebar (collapsible) ---- */}
         <AnimatePresence>
           {questionPanelOpen && (
@@ -799,16 +1045,43 @@ setLeaderboardOpen((v) => !v);
                       key={q.questionNumber}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="flex items-center gap-3 rounded-xl bg-white/[0.03] border border-white/[0.04] px-3 py-2.5"
+                      className="rounded-xl bg-white/[0.03] border border-white/[0.04] overflow-hidden"
                     >
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-violet-500/20 text-xs font-bold text-violet-300">
-                        {q.questionNumber}
+                      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.04]">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
+                          {q.questionNumber}
+                        </div>
+                        {q.winnerTeamName && (
+                          <span className="text-[10px] text-emerald-400 truncate">Won by {q.winnerTeamName}</span>
+                        )}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium text-white/80 truncate">{q.teamName}</p>
-                        <p className="text-[10px] text-slate-500">
-                          {q.actionType.replace('_', ' ')} &middot; {q.points > 0 ? '+' : ''}{q.points} pts
-                        </p>
+                      <div className="px-2 py-1.5 space-y-1">
+                        {q.actions.map((a) => (
+                          <div key={a.scoreId} className="flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-white/[0.03] group/action">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[11px] font-medium text-white/80 truncate">{a.teamName}</p>
+                              <p className="text-[9px] text-slate-500">
+                                {a.actionType.replace('_', ' ')} &middot; {a.points > 0 ? '+' : ''}{a.points}
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => {
+                                setEditingScore({
+                                  scoreId: a.scoreId,
+                                  teamName: a.teamName,
+                                  actionType: a.actionType,
+                                  currentPoints: a.points,
+                                });
+                                setEditPoints(String(a.points));
+                                setEditModalOpen(true);
+                              }}
+                              className="opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
+                              title="Edit score"
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </motion.div>
                   ))}
@@ -832,6 +1105,7 @@ setLeaderboardOpen((v) => !v);
                 const maxScore = overallLeaderboard[0]?.totalScore || 1;
                 const barPercent = maxScore > 0 ? Math.max((team.totalScore / maxScore) * 100, 3) : 3;
                 const isLeader = rank === 1 && team.totalScore > 0;
+                const isTiebreakerTeam = !tiebreakerMode || tiebreakerTeamIds.has(team.id);
                 const rankColors = rank === 1 ? 'from-yellow-500/20 via-yellow-600/5 to-transparent border-yellow-500/25'
                   : rank === 2 ? 'from-gray-300/10 via-gray-400/5 to-transparent border-gray-400/15'
                   : rank === 3 ? 'from-amber-600/10 via-amber-700/5 to-transparent border-amber-600/15'
@@ -843,7 +1117,7 @@ setLeaderboardOpen((v) => !v);
                 const barGradient = rank === 1 ? 'from-yellow-500 to-amber-500'
                   : rank === 2 ? 'from-gray-300 to-gray-400'
                   : rank === 3 ? 'from-amber-600 to-amber-700'
-                  : 'from-violet-500/60 to-violet-600/40';
+                  : 'from-cyan-500/60 to-cyan-600/40';
 
                 return (
                 <motion.div
@@ -853,7 +1127,7 @@ setLeaderboardOpen((v) => !v);
                   initial="hidden"
                   animate="visible"
                   layout
-                  className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-xl transition-all hover:scale-[1.01] ${rankColors} ${isLeader ? 'shadow-[0_0_30px_-5px_rgba(234,179,8,0.15)]' : ''}`}
+                  className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-xl transition-all hover:scale-[1.01] ${rankColors} ${isLeader ? 'shadow-[0_0_30px_-5px_rgba(234,179,8,0.15)]' : ''} ${!isTiebreakerTeam ? 'opacity-25 pointer-events-none' : ''}`}
                 >
                   {/* Animated glow on score */}
                   <AnimatePresence>
@@ -863,7 +1137,7 @@ setLeaderboardOpen((v) => !v);
                         animate={{ opacity: 0 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.8 }}
-                        className="absolute inset-0 rounded-2xl bg-violet-500/25 z-0"
+                        className="absolute inset-0 rounded-2xl bg-cyan-500/25 z-0"
                       />
                     )}
                   </AnimatePresence>
@@ -893,8 +1167,8 @@ setLeaderboardOpen((v) => !v);
                         <span className={`text-2xl font-black tabular-nums ${isLeader ? 'text-yellow-400' : 'text-white'}`}>{team.totalScore}</span>
                       </motion.div>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-violet-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
-                        <span className="text-[10px] text-slate-300">this round</span>
+                        <span className="text-xs font-semibold text-cyan-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
+                        <span className="text-[10px] text-slate-600">this round</span>
                       </div>
                     </div>
                   </div>
@@ -982,11 +1256,11 @@ setLeaderboardOpen((v) => !v);
                         setBonusModalOpen(true);
                       }}
                       disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-violet-500/10 border border-violet-500/20 px-2 py-2 text-violet-300 transition-all hover:bg-violet-500/20 hover:shadow-[0_0_12px_-3px_rgba(139,92,246,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 px-2 py-2 text-cyan-300 transition-all hover:bg-cyan-500/20 hover:shadow-[0_0_12px_-3px_rgba(6,182,212,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Gift className="h-4 w-4" />
                       <span className="text-[10px] font-bold uppercase tracking-wider">Bonus</span>
-                      <span className="text-[9px] text-violet-400/50">custom</span>
+                      <span className="text-[9px] text-cyan-400/50">custom</span>
                     </motion.button>
                   </div>
                 </motion.div>
@@ -1006,6 +1280,19 @@ setLeaderboardOpen((v) => !v);
               <BarChart3 className="h-4 w-4" />
               {isLastRound ? 'Final Results' : 'Round Stats'}
             </motion.button>
+
+            {/* Tiebreaker button — shown when all questions answered and ties detected */}
+            {!tiebreakerMode && tiedTeamsInfo.hasTies && currentRound?.status === 'active' && event.current_question > (currentRound?.question_count ?? 0) && (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={() => handleStartTiebreaker(tiedTeamsInfo.tiedTeamIds)}
+                className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+              >
+                <Zap className="h-4 w-4" />
+                Tiebreaker ({tiedTeamsInfo.tiedTeamIds.size} teams)
+              </motion.button>
+            )}
 
             {canReopenRound ? (
               <motion.button
@@ -1045,7 +1332,7 @@ setLeaderboardOpen((v) => !v);
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={() => setLeaderboardOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-violet-500/30 bg-violet-600/20 text-violet-300 shadow-lg shadow-violet-500/10 backdrop-blur-xl transition-colors hover:bg-violet-600/30"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-600/20 text-cyan-300 shadow-lg shadow-cyan-500/10 backdrop-blur-xl transition-colors hover:bg-cyan-600/30"
         title="Rankings (L)"
       >
         <Crown className="h-6 w-6" />
@@ -1101,7 +1388,7 @@ setLeaderboardOpen((v) => !v);
             >
               <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
                 <div className="flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-violet-400" />
+                  <Crown className="h-5 w-5 text-cyan-400" />
                   <h2 className="text-lg font-bold">Rankings</h2>
                 </div>
                 <button
@@ -1117,7 +1404,7 @@ setLeaderboardOpen((v) => !v);
                   onClick={() => setLeaderboardTab('overall')}
                   className={`flex-1 py-3 text-sm font-medium transition-colors ${
                     leaderboardTab === 'overall'
-                      ? 'border-b-2 border-violet-500 text-violet-300'
+                      ? 'border-b-2 border-cyan-500 text-cyan-300'
                       : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
@@ -1127,7 +1414,7 @@ setLeaderboardOpen((v) => !v);
                   onClick={() => setLeaderboardTab('round')}
                   className={`flex-1 py-3 text-sm font-medium transition-colors ${
                     leaderboardTab === 'round'
-                      ? 'border-b-2 border-violet-500 text-violet-300'
+                      ? 'border-b-2 border-cyan-500 text-cyan-300'
                       : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
@@ -1156,7 +1443,7 @@ setLeaderboardOpen((v) => !v);
                         transition={{ delay: idx * 0.04 }}
                         className={`flex items-center gap-4 rounded-xl border bg-gradient-to-r px-4 py-3 ${medal}`}
                       >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/10 text-sm font-black tabular-nums">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500/10 text-sm font-black tabular-nums">
                           {idx + 1}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1203,7 +1490,7 @@ setLeaderboardOpen((v) => !v);
             >
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Gift className="h-5 w-5 text-violet-400" />
+                  <Gift className="h-5 w-5 text-cyan-400" />
                   <h3 className="text-lg font-bold">Bonus Points</h3>
                 </div>
                 <button
@@ -1245,10 +1532,88 @@ setLeaderboardOpen((v) => !v);
                   whileTap={{ scale: 0.98 }}
                   onClick={handleBonusSubmit}
                   disabled={!bonusPoints || isNaN(parseInt(bonusPoints))}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Plus className="h-4 w-4" />
                   Award
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================================================================== */}
+      {/*  EDIT SCORE MODAL                                                  */}
+      {/* ================================================================== */}
+      <AnimatePresence>
+        {editModalOpen && editingScore && (
+          <motion.div
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setEditModalOpen(false)}
+          >
+            <motion.div
+              variants={modalVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-sm rounded-2xl border border-white/[0.08] bg-slate-900/95 p-6 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Pencil className="h-5 w-5 text-cyan-400" />
+                  <h3 className="text-lg font-bold">Edit Score</h3>
+                </div>
+                <button
+                  onClick={() => setEditModalOpen(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="space-y-1 text-xs text-slate-500 mb-3">
+                <p>Team: <span className="text-white/70 font-medium">{editingScore.teamName}</span></p>
+                <p>Action: <span className="text-white/70 font-medium">{editingScore.actionType.replace('_', ' ')}</span></p>
+                <p>Current: <span className="text-white/70 font-medium">{editingScore.currentPoints} pts</span></p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-400 mb-1.5">New Points</label>
+                <input
+                  type="number"
+                  value={editPoints}
+                  onChange={(e) => setEditPoints(e.target.value)}
+                  placeholder="e.g. 10 or -5"
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleEditScore();
+                  }}
+                  className={inputCls}
+                />
+              </div>
+
+              <div className="mt-5 flex gap-3">
+                <button
+                  onClick={() => setEditModalOpen(false)}
+                  className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-slate-400 hover:bg-white/[0.06] transition-colors"
+                >
+                  Cancel
+                </button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleEditScore}
+                  disabled={!editPoints || isNaN(parseInt(editPoints)) || parseInt(editPoints) === editingScore.currentPoints}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                >
+                  <Pencil className="h-4 w-4" />
+                  Update
                 </motion.button>
               </div>
             </motion.div>
@@ -1270,7 +1635,7 @@ setLeaderboardOpen((v) => !v);
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Keyboard className="h-4 w-4 text-violet-400" />
+                <Keyboard className="h-4 w-4 text-cyan-400" />
                 <h3 className="text-sm font-bold text-slate-300">Shortcuts</h3>
               </div>
               <button onClick={() => setShortcutsOpen(false)} className="text-slate-500 hover:text-white transition-colors">

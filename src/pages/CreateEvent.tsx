@@ -5,16 +5,17 @@ import { ArrowLeft, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Moderator } from '../types';
 import { AppLayout, AppHeader } from '../components/Layout';
+import DateTimePicker from '../components/DateTimePicker';
 
-interface RoundConfig { round_name: string; description: string; bounce_points: number; pounce_plus: number; pounce_minus: number; question_count: number; }
+interface RoundConfig { round_name: string; description: string; bounce_points: number; pounce_plus: number; pounce_minus: number; question_count: number; tiebreaker_questions: number; }
 interface ParticipantConfig { name: string; student_id: string; email: string; phone: string; }
 interface TeamConfig { team_name: string; team_lead: string; participants: ParticipantConfig[]; }
 
-const defaultRound = (i: number): RoundConfig => ({ round_name: `Round ${i + 1}`, description: '', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5 });
+const defaultRound = (i: number): RoundConfig => ({ round_name: `Round ${i + 1}`, description: '', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5, tiebreaker_questions: 3 });
 const defaultParticipant = (): ParticipantConfig => ({ name: '', student_id: '', email: '', phone: '' });
 const defaultTeam = (i: number): TeamConfig => ({ team_name: `Team ${i + 1}`, team_lead: '', participants: [defaultParticipant()] });
 
-const inp = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-white text-sm placeholder-slate-500 outline-none transition-all focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30';
+const inp = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-white text-sm placeholder-slate-500 outline-none transition-all focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30';
 const inpError = 'w-full rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-2.5 text-white text-sm placeholder-slate-500 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30';
 const lbl = 'block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider';
 const errText = 'mt-1 text-[11px] text-red-400';
@@ -119,7 +120,7 @@ export default function CreateEvent() {
       const { error: re } = await supabase.from('rounds').insert(rounds.map((r, i) => ({
         event_id: ev.id, round_name: r.round_name.trim() || `Round ${i + 1}`, round_number: i + 1,
         description: r.description.trim() || null, bounce_points: r.bounce_points, pounce_plus: r.pounce_plus,
-        pounce_minus: r.pounce_minus, question_count: r.question_count, status: 'pending' as const,
+        pounce_minus: r.pounce_minus, question_count: r.question_count, tiebreaker_questions: r.tiebreaker_questions, status: 'pending' as const,
       })));
       if (re) throw re;
 
@@ -183,7 +184,7 @@ export default function CreateEvent() {
           </div>
           <div>
             <label htmlFor="ev-date" className={lbl}>Date &amp; Time <span className="text-red-400">*</span></label>
-            <input id="ev-date" type="datetime-local" required value={date} onChange={(e) => { setDate(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['ev-date']; return n; }); }} className={fieldErrors['ev-date'] ? inpError : inp} />
+            <DateTimePicker value={date} onChange={(v) => { setDate(v); setFieldErrors((p) => { const n = { ...p }; delete n['ev-date']; return n; }); }} hasError={!!fieldErrors['ev-date']} />
             {fieldErrors['ev-date'] && <p className={errText}>{fieldErrors['ev-date']}</p>}
           </div>
         </Section>
@@ -205,7 +206,7 @@ export default function CreateEvent() {
         </Section>
 
         {/* Moderators */}
-        <Section title="Moderators" action={<button type="button" onClick={addMod} className="flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors"><Plus className="w-3.5 h-3.5" /> Add</button>}>
+        <Section title="Moderators" action={<button type="button" onClick={addMod} className="flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors"><Plus className="w-3.5 h-3.5" /> Add</button>}>
           {moderators.length === 0 && <p className="text-sm text-slate-500">No moderators added.</p>}
           <AnimatePresence initial={false}>
             {moderators.map((mod, i) => (
@@ -250,11 +251,12 @@ export default function CreateEvent() {
               <div className="space-y-4 p-5 border-t border-white/[0.04]">
                 <div><label className={lbl}>Round Name</label><input placeholder={`Round ${i + 1}`} value={r.round_name} onChange={(e) => updRound(i, 'round_name', e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>Description</label><textarea rows={2} placeholder="Describe..." value={r.description} onChange={(e) => updRound(i, 'description', e.target.value)} className={inp + ' resize-none'} /></div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div><label className={lbl}>Bounce</label><input type="number" value={r.bounce_points} onChange={(e) => updRound(i, 'bounce_points', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Pounce +</label><input type="number" value={r.pounce_plus} onChange={(e) => updRound(i, 'pounce_plus', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Pounce −</label><input type="number" value={r.pounce_minus} onChange={(e) => updRound(i, 'pounce_minus', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Questions</label><input type="number" min={5} max={5} value={5} readOnly className={inp + ' opacity-60 cursor-not-allowed'} /></div>
+                  <div><label className={lbl}>Tiebreaker Q</label><input type="number" min={1} max={10} value={r.tiebreaker_questions} onChange={(e) => updRound(i, 'tiebreaker_questions', Math.max(1, Math.min(10, +e.target.value || 3)))} className={inp} /></div>
                 </div>
               </div>
             </Accordion>
@@ -265,7 +267,7 @@ export default function CreateEvent() {
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Teams</h2>
-            <button type="button" onClick={addTeam} className="flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors"><Plus className="w-3.5 h-3.5" /> Add Team</button>
+            <button type="button" onClick={addTeam} className="flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors"><Plus className="w-3.5 h-3.5" /> Add Team</button>
           </div>
           {teams.map((t, ti) => (
             <Accordion key={ti} title={t.team_name || `Team ${ti + 1}`} open={expandedTeams.has(ti)} toggle={() => toggleTeam(ti)}
@@ -280,7 +282,7 @@ export default function CreateEvent() {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Participants</span>
-                    <button type="button" onClick={() => addPart(ti)} className="flex items-center gap-1 text-xs font-medium text-violet-400 hover:text-violet-300 transition-colors"><Plus className="w-3 h-3" /> Add</button>
+                    <button type="button" onClick={() => addPart(ti)} className="flex items-center gap-1 text-xs font-medium text-cyan-400 hover:text-cyan-300 transition-colors"><Plus className="w-3 h-3" /> Add</button>
                   </div>
                   <AnimatePresence initial={false}>
                     {t.participants.map((p, pi) => (
@@ -318,7 +320,7 @@ export default function CreateEvent() {
         {/* Submit */}
         <div className="pt-4 pb-12">
           <motion.button type="submit" disabled={submitting} whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }}
-            className="w-full py-3 rounded-xl font-semibold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-violet-600/20 cursor-pointer"
+            className="w-full py-3 rounded-xl font-semibold text-white bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-lg shadow-cyan-600/20 cursor-pointer"
           >
             {submitting ? 'Creating...' : 'Create Event'}
           </motion.button>
