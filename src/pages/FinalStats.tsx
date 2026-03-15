@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowLeft, Crown, Star, BarChart3, ChevronRight } from 'lucide-react';
+import { Trophy, ArrowLeft, Crown, Star, BarChart3, ChevronRight, RotateCcw } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import Podium from '../components/Podium';
@@ -118,6 +118,14 @@ export default function FinalStats() {
     setMarking(false);
   };
 
+  const handleReopenEvent = async () => {
+    if (!eventId || marking) return;
+    setMarking(true);
+    await supabase.from('events').update({ status: 'active' }).eq('id', eventId);
+    setEvent((prev) => (prev ? { ...prev, status: 'active' } : prev));
+    setMarking(false);
+  };
+
   useEffect(() => {
     if (!loading && leaderboard.length > 0 && !confettiFired.current) {
       confettiFired.current = true;
@@ -189,6 +197,16 @@ export default function FinalStats() {
                   className="px-4 py-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 text-sm font-medium text-emerald-400 transition-all hover:bg-emerald-500/20 disabled:opacity-50"
                 >
                   {marking ? 'Marking...' : 'Mark Completed'}
+                </button>
+              )}
+              {event && event.status === 'completed' && (
+                <button
+                  onClick={handleReopenEvent}
+                  disabled={marking}
+                  className="px-4 py-2 rounded-lg border border-amber-500/20 bg-amber-500/10 text-sm font-medium text-amber-400 transition-all hover:bg-amber-500/20 disabled:opacity-50 flex items-center gap-2"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  {marking ? 'Reopening...' : 'Reopen Event'}
                 </button>
               )}
               <button
