@@ -6,6 +6,7 @@ import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import Podium from '../components/Podium';
 import ScoreBar from '../components/ScoreBar';
+import { AppLayout, AppHeader, LoadingScreen } from '../components/Layout';
 
 interface Event {
   id: string;
@@ -188,25 +189,13 @@ export default function FinalStats() {
 
   const winner = leaderboard.length > 0 ? leaderboard[0] : null;
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-          <p className="text-sm text-slate-400">Calculating final results...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen message="Calculating final results..." />;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white overflow-hidden">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
+    <AppLayout className="overflow-hidden">
       <div className="relative z-10">
-        {/* Header */}
-        <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl">
-          <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+        <AppHeader>
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <Trophy className="w-6 h-6 text-violet-400" />
               <div>
@@ -252,7 +241,7 @@ export default function FinalStats() {
               </button>
             </div>
           </div>
-        </header>
+        </AppHeader>
 
         <main className="max-w-5xl mx-auto px-6 py-10 space-y-12">
           {/* Winner Announcement */}
@@ -455,6 +444,6 @@ export default function FinalStats() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </AppLayout>
   );
 }

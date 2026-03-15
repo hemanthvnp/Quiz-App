@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event, Round, Team, Score, TeamWithScores, ActionType } from '../types';
+import { AppLayout } from '../components/Layout';
 
 // ---------------------------------------------------------------------------
 // Animation variants
@@ -617,9 +618,7 @@ export default function EventRound() {
   // Render
   // ---------------------------------------------------------------------------
   return (
-    <div className="relative min-h-screen text-white bg-slate-950">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
+    <AppLayout className="relative">
       {/* ================================================================== */}
       {/*  HEADER                                                            */}
       {/* ================================================================== */}
@@ -1297,6 +1296,6 @@ export default function EventRound() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </AppLayout>
   );
 }

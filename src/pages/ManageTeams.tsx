@@ -13,7 +13,8 @@ import {
   X,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Event, Team, Participant } from '../types';
+import type { Team, Participant, Event } from '../types';
+import { AppLayout, AppHeader, LoadingScreen } from '../components/Layout';
 
 interface TeamWithParticipants extends Team {
   participants: Participant[];
@@ -168,24 +169,12 @@ export default function ManageTeams() {
     setEditLead(team.lead);
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-950">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-          <p className="text-sm text-slate-400">Loading teams...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen message="Loading teams..." />;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto flex items-center gap-4 px-6 py-4">
+    <AppLayout>
+      <AppHeader>
+        <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/events')}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
@@ -210,7 +199,7 @@ export default function ManageTeams() {
             <Plus className="w-4 h-4" /> Add Team
           </motion.button>
         </div>
-      </header>
+      </AppHeader>
 
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
         {teams.length === 0 && (
@@ -524,6 +513,6 @@ export default function ManageTeams() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </AppLayout>
   );
 }

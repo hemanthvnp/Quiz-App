@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Moderator } from '../types';
+import { AppLayout, AppHeader } from '../components/Layout';
 
 interface RoundConfig { round_name: string; description: string; bounce_points: number; pounce_plus: number; pounce_minus: number; question_count: number; }
 interface ParticipantConfig { name: string; student_id: string; email: string; phone: string; }
@@ -150,18 +151,15 @@ export default function CreateEvent() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl">
-        <div className="max-w-3xl mx-auto flex items-center gap-4 px-6 py-4">
+    <AppLayout>
+      <AppHeader maxWidth="max-w-3xl">
+        <div className="flex items-center gap-4">
           <button type="button" onClick={() => navigate('/dashboard')} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </button>
           <h1 className="text-lg font-bold">Create Event</h1>
         </div>
-      </header>
+      </AppHeader>
 
       <motion.form initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} onSubmit={handleSubmit} className="relative z-10 max-w-3xl mx-auto px-6 py-8 space-y-6">
         {/* Error */}
@@ -326,7 +324,7 @@ export default function CreateEvent() {
           </motion.button>
         </div>
       </motion.form>
-    </div>
+    </AppLayout>
   );
 }
 

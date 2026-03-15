@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, ChevronRight, Trophy, Hash, Zap, Target, AlertCircle, Award, Gift, Minus, BarChart3 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ScoreBar from '../components/ScoreBar';
+import { AppLayout, AppHeader, LoadingScreen } from '../components/Layout';
 
 interface Round {
   id: string;
@@ -164,24 +165,12 @@ export default function RoundStats() {
     fetchData();
   }, [eventId, roundId]);
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
-          <p className="text-sm text-slate-400">Loading round stats...</p>
-        </div>
-      </div>
-    );
-  }
+  if (loading) return <LoadingScreen message="Loading round stats..." />;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <AppLayout>
+      <AppHeader maxWidth="max-w-7xl">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => navigate(`/events/${eventId}/rounds`)}
@@ -218,7 +207,7 @@ export default function RoundStats() {
             )}
           </div>
         </div>
-      </header>
+      </AppHeader>
 
       <main className="relative z-10 max-w-7xl mx-auto px-6 py-8">
         {/* ---- Two-column: Leaderboards ---- */}
@@ -393,6 +382,6 @@ export default function RoundStats() {
           </div>
         </motion.div>
       </main>
-    </div>
+    </AppLayout>
   );
 }

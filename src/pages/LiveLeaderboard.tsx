@@ -4,6 +4,7 @@ import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Trophy, Zap, Crown, Monitor } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
+import { AppLayout } from '../components/Layout';
 
 interface Event {
   id: string;
@@ -313,9 +314,7 @@ export default function LiveLeaderboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white overflow-hidden">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
+    <AppLayout className="overflow-hidden">
       <div className="relative z-10 min-h-screen flex flex-col">
         {/* Header */}
         <motion.header
@@ -534,6 +533,6 @@ export default function LiveLeaderboard() {
           QFactor Live Leaderboard
         </footer>
       </div>
-    </div>
+    </AppLayout>
   );
 }

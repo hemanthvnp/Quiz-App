@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Plus, Eye, LogOut, Trophy, Users, Activity } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { AppLayout, AppHeader } from '../components/Layout';
 
 const container = {
   hidden: { opacity: 0 },
@@ -45,13 +46,9 @@ export default function Dashboard() {
   ];
 
   return (
-    <div className="min-h-screen bg-slate-950">
-      {/* Glow */}
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto flex items-center justify-between px-6 py-4">
+    <AppLayout>
+      <AppHeader>
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
               <span className="text-sm font-bold text-violet-400">Q</span>
@@ -66,7 +63,7 @@ export default function Dashboard() {
             Logout
           </button>
         </div>
-      </header>
+      </AppHeader>
 
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-10">
         {/* Welcome */}
@@ -123,6 +120,6 @@ export default function Dashboard() {
           </motion.button>
         </motion.div>
       </main>
-    </div>
+    </AppLayout>
   );
 }
