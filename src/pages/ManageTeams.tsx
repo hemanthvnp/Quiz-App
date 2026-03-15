@@ -27,6 +27,11 @@ const card = {
 
 const inputCls =
   'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30';
+const inputErrCls =
+  'w-full rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30';
+const errText = 'mt-1 text-[11px] text-red-400';
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phoneRegex = /^\d{10}$/;
 
 export default function ManageTeams() {
   const { eventId } = useParams<{ eventId: string }>();
@@ -54,6 +59,7 @@ export default function ManageTeams() {
   const [participantForms, setParticipantForms] = useState<
     Record<string, { name: string; student_id: string; email: string; phone: string }>
   >({});
+  const [partErrors, setPartErrors] = useState<Record<string, Record<string, string>>>({});
 
   useEffect(() => {
     if (!eventId) return;
@@ -117,7 +123,15 @@ export default function ManageTeams() {
 
   async function handleAddParticipant(teamId: string) {
     const form = getParticipantForm(teamId);
-    if (!form.name.trim()) return;
+    const errs: Record<string, string> = {};
+    if (!form.name.trim()) errs.name = 'Name is required.';
+    if (form.email.trim() && !emailRegex.test(form.email.trim())) errs.email = 'Invalid email format.';
+    if (form.phone.trim() && !phoneRegex.test(form.phone.trim())) errs.phone = '10-digit number required.';
+    if (Object.keys(errs).length > 0) {
+      setPartErrors((prev) => ({ ...prev, [teamId]: errs }));
+      return;
+    }
+    setPartErrors((prev) => { const n = { ...prev }; delete n[teamId]; return n; });
     const { error } = await supabase.from('participants').insert({
       team_id: teamId,
       name: form.name.trim(),
@@ -364,13 +378,16 @@ export default function ManageTeams() {
                               Add Member
                             </p>
                             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                              <input
-                                type="text"
-                                placeholder="Name *"
-                                value={form.name}
-                                onChange={(e) => updateParticipantForm(team.id, 'name', e.target.value)}
-                                className={inputCls}
-                              />
+                              <div>
+                                <input
+                                  type="text"
+                                  placeholder="Name *"
+                                  value={form.name}
+                                  onChange={(e) => { updateParticipantForm(team.id, 'name', e.target.value); setPartErrors((prev) => { const n = { ...prev }; if (n[team.id]) { delete n[team.id].name; if (!Object.keys(n[team.id]).length) delete n[team.id]; } return n; }); }}
+                                  className={partErrors[team.id]?.name ? inputErrCls : inputCls}
+                                />
+                                {partErrors[team.id]?.name && <p className={errText}>{partErrors[team.id].name}</p>}
+                              </div>
                               <input
                                 type="text"
                                 placeholder="Student ID"
@@ -378,20 +395,26 @@ export default function ManageTeams() {
                                 onChange={(e) => updateParticipantForm(team.id, 'student_id', e.target.value)}
                                 className={inputCls}
                               />
-                              <input
-                                type="email"
-                                placeholder="Email"
-                                value={form.email}
-                                onChange={(e) => updateParticipantForm(team.id, 'email', e.target.value)}
-                                className={inputCls}
-                              />
-                              <input
-                                type="tel"
-                                placeholder="Phone"
-                                value={form.phone}
-                                onChange={(e) => updateParticipantForm(team.id, 'phone', e.target.value)}
-                                className={inputCls}
-                              />
+                              <div>
+                                <input
+                                  type="email"
+                                  placeholder="Email"
+                                  value={form.email}
+                                  onChange={(e) => { updateParticipantForm(team.id, 'email', e.target.value); setPartErrors((prev) => { const n = { ...prev }; if (n[team.id]) { delete n[team.id].email; if (!Object.keys(n[team.id]).length) delete n[team.id]; } return n; }); }}
+                                  className={partErrors[team.id]?.email ? inputErrCls : inputCls}
+                                />
+                                {partErrors[team.id]?.email && <p className={errText}>{partErrors[team.id].email}</p>}
+                              </div>
+                              <div>
+                                <input
+                                  type="tel"
+                                  placeholder="Phone (10 digits)"
+                                  value={form.phone}
+                                  onChange={(e) => { updateParticipantForm(team.id, 'phone', e.target.value); setPartErrors((prev) => { const n = { ...prev }; if (n[team.id]) { delete n[team.id].phone; if (!Object.keys(n[team.id]).length) delete n[team.id]; } return n; }); }}
+                                  className={partErrors[team.id]?.phone ? inputErrCls : inputCls}
+                                />
+                                {partErrors[team.id]?.phone && <p className={errText}>{partErrors[team.id].phone}</p>}
+                              </div>
                             </div>
                             <motion.button
                               whileHover={{ scale: 1.02 }}

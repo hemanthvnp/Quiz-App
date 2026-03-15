@@ -381,6 +381,13 @@ export default function EventRound() {
 
       const isPositive = ['bounce', 'pounce_plus', 'buzzer', 'bonus'].includes(actionType) && points > 0;
 
+      // Block positive actions that advance question counter beyond limit
+      if (isPositive && event.current_question > currentRound.question_count) {
+        showFeedback(`All ${currentRound.question_count} questions answered — complete the round`);
+        setSubmitting(false);
+        return;
+      }
+
       try {
         const { data: insertedScore, error: insertError } = await supabase.from('scores').insert({
           event_id: eventId,
@@ -450,7 +457,16 @@ export default function EventRound() {
 
   // ---- Complete round & activate next ----
   const handleCompleteRound = useCallback(async () => {
-    if (!currentRound || !eventId) return;
+    if (!currentRound || !eventId || !event) return;
+
+    // Verify all questions answered
+    const questionsAnswered = event.current_question - 1;
+    const totalQuestions = currentRound.question_count;
+    if (questionsAnswered < totalQuestions) {
+      showFeedback(`Cannot complete: only ${questionsAnswered}/${totalQuestions} questions answered`);
+      return;
+    }
+
     setSubmitting(true);
     try {
       await supabase.from('rounds').update({ status: 'completed' }).eq('id', currentRound.id);
@@ -484,7 +500,7 @@ export default function EventRound() {
     } finally {
       setSubmitting(false);
     }
-  }, [currentRound, eventId, rounds, showFeedback]);
+  }, [currentRound, eventId, event, rounds, showFeedback]);
 
   // ---- Reopen a completed round ----
   const handleReopenRound = useCallback(async () => {

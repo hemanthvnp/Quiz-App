@@ -9,12 +9,17 @@ interface RoundConfig { round_name: string; description: string; bounce_points: 
 interface ParticipantConfig { name: string; student_id: string; email: string; phone: string; }
 interface TeamConfig { team_name: string; team_lead: string; participants: ParticipantConfig[]; }
 
-const defaultRound = (i: number): RoundConfig => ({ round_name: `Round ${i + 1}`, description: '', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 10 });
+const defaultRound = (i: number): RoundConfig => ({ round_name: `Round ${i + 1}`, description: '', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5 });
 const defaultParticipant = (): ParticipantConfig => ({ name: '', student_id: '', email: '', phone: '' });
 const defaultTeam = (i: number): TeamConfig => ({ team_name: `Team ${i + 1}`, team_lead: '', participants: [defaultParticipant()] });
 
 const inp = 'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-white text-sm placeholder-slate-500 outline-none transition-all focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30';
+const inpError = 'w-full rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-2.5 text-white text-sm placeholder-slate-500 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30';
 const lbl = 'block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider';
+const errText = 'mt-1 text-[11px] text-red-400';
+
+const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const phoneRegex = /^\d{10}$/;
 
 export default function CreateEvent() {
   const navigate = useNavigate();
@@ -32,6 +37,7 @@ export default function CreateEvent() {
   const [expandedTeams, setExpandedTeams] = useState<Set<number>>(new Set([0]));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   // Moderators
   const addMod = () => setModerators((p) => [...p, { name: '', email: '' }]);
@@ -60,23 +66,33 @@ export default function CreateEvent() {
     setTeams((p) => p.map((t, i) => i === ti ? { ...t, participants: t.participants.map((pt, j) => j === pi ? { ...pt, [f]: v } : pt) } : t));
 
   const validate = (): string | null => {
-    if (!name.trim()) return 'Event name is required.';
-    if (!date.trim()) return 'Date is required.';
-    if (!quizMaster.trim()) return 'Quiz master name is required.';
-    if (!quizMasterEmail.trim()) return 'Quiz master email is required.';
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!re.test(quizMasterEmail)) return 'Invalid quiz master email.';
+    const errs: Record<string, string> = {};
+    if (!name.trim()) errs['ev-name'] = 'Event name is required.';
+    if (!date.trim()) errs['ev-date'] = 'Date is required.';
+    if (!quizMaster.trim()) errs['qm-name'] = 'Quiz master name is required.';
+    if (!quizMasterEmail.trim()) errs['qm-email'] = 'Quiz master email is required.';
+    else if (!emailRegex.test(quizMasterEmail.trim())) errs['qm-email'] = 'Invalid email format.';
+
     for (let i = 0; i < moderators.length; i++) {
-      if (!moderators[i].name.trim()) return `Moderator ${i + 1} name required.`;
-      if (moderators[i].email && !re.test(moderators[i].email!)) return `Moderator ${i + 1} email invalid.`;
+      if (!moderators[i].name.trim()) errs[`mod-${i}-name`] = 'Name required.';
+      if (moderators[i].email && !emailRegex.test(moderators[i].email!.trim())) errs[`mod-${i}-email`] = 'Invalid email.';
     }
-    if (teams.length < 1) return 'Add at least one team.';
+
+    if (teams.length < 1) errs['teams'] = 'Add at least one team.';
     for (let i = 0; i < teams.length; i++) {
-      if (!teams[i].team_name.trim()) return `Team ${i + 1} name required.`;
-      if (!teams[i].participants.length) return `Team ${i + 1} needs participants.`;
-      for (let j = 0; j < teams[i].participants.length; j++)
-        if (!teams[i].participants[j].name.trim()) return `Team ${i + 1}, Participant ${j + 1} name required.`;
+      if (!teams[i].team_name.trim()) errs[`team-${i}-name`] = 'Team name required.';
+      if (!teams[i].participants.length) errs[`team-${i}-parts`] = 'Add at least one participant.';
+      for (let j = 0; j < teams[i].participants.length; j++) {
+        const p = teams[i].participants[j];
+        if (!p.name.trim()) errs[`team-${i}-p-${j}-name`] = 'Name required.';
+        if (p.email.trim() && !emailRegex.test(p.email.trim())) errs[`team-${i}-p-${j}-email`] = 'Invalid email.';
+        if (p.phone.trim() && !phoneRegex.test(p.phone.trim())) errs[`team-${i}-p-${j}-phone`] = '10-digit number required.';
+      }
     }
+
+    setFieldErrors(errs);
+    const keys = Object.keys(errs);
+    if (keys.length > 0) return errs[keys[0]];
     return null;
   };
 
@@ -160,7 +176,8 @@ export default function CreateEvent() {
         <Section title="Event Details">
           <div>
             <label htmlFor="ev-name" className={lbl}>Name <span className="text-red-400">*</span></label>
-            <input id="ev-name" required placeholder="e.g. Annual Quiz 2026" value={name} onChange={(e) => setName(e.target.value)} className={inp} />
+            <input id="ev-name" required placeholder="e.g. Annual Quiz 2026" value={name} onChange={(e) => { setName(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['ev-name']; return n; }); }} className={fieldErrors['ev-name'] ? inpError : inp} />
+            {fieldErrors['ev-name'] && <p className={errText}>{fieldErrors['ev-name']}</p>}
           </div>
           <div>
             <label htmlFor="ev-desc" className={lbl}>Description</label>
@@ -168,7 +185,8 @@ export default function CreateEvent() {
           </div>
           <div>
             <label htmlFor="ev-date" className={lbl}>Date &amp; Time <span className="text-red-400">*</span></label>
-            <input id="ev-date" type="datetime-local" required value={date} onChange={(e) => setDate(e.target.value)} className={inp} />
+            <input id="ev-date" type="datetime-local" required value={date} onChange={(e) => { setDate(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['ev-date']; return n; }); }} className={fieldErrors['ev-date'] ? inpError : inp} />
+            {fieldErrors['ev-date'] && <p className={errText}>{fieldErrors['ev-date']}</p>}
           </div>
         </Section>
 
@@ -177,11 +195,13 @@ export default function CreateEvent() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label htmlFor="qm-name" className={lbl}>Name <span className="text-red-400">*</span></label>
-              <input id="qm-name" required placeholder="Full name" value={quizMaster} onChange={(e) => setQuizMaster(e.target.value)} className={inp} />
+              <input id="qm-name" required placeholder="Full name" value={quizMaster} onChange={(e) => { setQuizMaster(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['qm-name']; return n; }); }} className={fieldErrors['qm-name'] ? inpError : inp} />
+              {fieldErrors['qm-name'] && <p className={errText}>{fieldErrors['qm-name']}</p>}
             </div>
             <div>
               <label htmlFor="qm-email" className={lbl}>Email <span className="text-red-400">*</span></label>
-              <input id="qm-email" type="email" required placeholder="email@example.com" value={quizMasterEmail} onChange={(e) => setQuizMasterEmail(e.target.value)} className={inp} />
+              <input id="qm-email" type="email" required placeholder="email@example.com" value={quizMasterEmail} onChange={(e) => { setQuizMasterEmail(e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n['qm-email']; return n; }); }} className={fieldErrors['qm-email'] ? inpError : inp} />
+              {fieldErrors['qm-email'] && <p className={errText}>{fieldErrors['qm-email']}</p>}
             </div>
           </div>
         </Section>
@@ -194,8 +214,14 @@ export default function CreateEvent() {
               <motion.div key={i} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
                 <div className="flex items-start gap-3 rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
                   <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <input placeholder="Name *" required value={mod.name} onChange={(e) => updMod(i, 'name', e.target.value)} className={inp} />
-                    <input placeholder="Email" type="email" value={mod.email || ''} onChange={(e) => updMod(i, 'email', e.target.value)} className={inp} />
+                    <div>
+                      <input placeholder="Name *" required value={mod.name} onChange={(e) => { updMod(i, 'name', e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n[`mod-${i}-name`]; return n; }); }} className={fieldErrors[`mod-${i}-name`] ? inpError : inp} />
+                      {fieldErrors[`mod-${i}-name`] && <p className={errText}>{fieldErrors[`mod-${i}-name`]}</p>}
+                    </div>
+                    <div>
+                      <input placeholder="Email" type="email" value={mod.email || ''} onChange={(e) => { updMod(i, 'email', e.target.value); setFieldErrors((p) => { const n = { ...p }; delete n[`mod-${i}-email`]; return n; }); }} className={fieldErrors[`mod-${i}-email`] ? inpError : inp} />
+                      {fieldErrors[`mod-${i}-email`] && <p className={errText}>{fieldErrors[`mod-${i}-email`]}</p>}
+                    </div>
                   </div>
                   <button type="button" onClick={() => rmMod(i)} className="p-1.5 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-4 h-4" /></button>
                 </div>
@@ -230,7 +256,7 @@ export default function CreateEvent() {
                   <div><label className={lbl}>Bounce</label><input type="number" value={r.bounce_points} onChange={(e) => updRound(i, 'bounce_points', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Pounce +</label><input type="number" value={r.pounce_plus} onChange={(e) => updRound(i, 'pounce_plus', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Pounce −</label><input type="number" value={r.pounce_minus} onChange={(e) => updRound(i, 'pounce_minus', +e.target.value || 0)} className={inp} /></div>
-                  <div><label className={lbl}>Questions</label><input type="number" min={1} value={r.question_count} onChange={(e) => updRound(i, 'question_count', Math.max(1, +e.target.value || 1))} className={inp} /></div>
+                  <div><label className={lbl}>Questions</label><input type="number" min={5} max={5} value={5} readOnly className={inp + ' opacity-60 cursor-not-allowed'} /></div>
                 </div>
               </div>
             </Accordion>
@@ -263,10 +289,19 @@ export default function CreateEvent() {
                       <motion.div key={pi} initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden">
                         <div className="flex items-start gap-2 rounded-xl bg-white/[0.02] border border-white/[0.04] p-3">
                           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                            <input placeholder="Name *" value={p.name} onChange={(e) => updPart(ti, pi, 'name', e.target.value)} className={inp} />
+                            <div>
+                              <input placeholder="Name *" value={p.name} onChange={(e) => { updPart(ti, pi, 'name', e.target.value); setFieldErrors((prev) => { const n = { ...prev }; delete n[`team-${ti}-p-${pi}-name`]; return n; }); }} className={fieldErrors[`team-${ti}-p-${pi}-name`] ? inpError : inp} />
+                              {fieldErrors[`team-${ti}-p-${pi}-name`] && <p className={errText}>{fieldErrors[`team-${ti}-p-${pi}-name`]}</p>}
+                            </div>
                             <input placeholder="Student ID" value={p.student_id} onChange={(e) => updPart(ti, pi, 'student_id', e.target.value)} className={inp} />
-                            <input placeholder="Email" type="email" value={p.email} onChange={(e) => updPart(ti, pi, 'email', e.target.value)} className={inp} />
-                            <input placeholder="Phone" type="tel" value={p.phone} onChange={(e) => updPart(ti, pi, 'phone', e.target.value)} className={inp} />
+                            <div>
+                              <input placeholder="Email" type="email" value={p.email} onChange={(e) => { updPart(ti, pi, 'email', e.target.value); setFieldErrors((prev) => { const n = { ...prev }; delete n[`team-${ti}-p-${pi}-email`]; return n; }); }} className={fieldErrors[`team-${ti}-p-${pi}-email`] ? inpError : inp} />
+                              {fieldErrors[`team-${ti}-p-${pi}-email`] && <p className={errText}>{fieldErrors[`team-${ti}-p-${pi}-email`]}</p>}
+                            </div>
+                            <div>
+                              <input placeholder="Phone (10 digits)" type="tel" value={p.phone} onChange={(e) => { updPart(ti, pi, 'phone', e.target.value); setFieldErrors((prev) => { const n = { ...prev }; delete n[`team-${ti}-p-${pi}-phone`]; return n; }); }} className={fieldErrors[`team-${ti}-p-${pi}-phone`] ? inpError : inp} />
+                              {fieldErrors[`team-${ti}-p-${pi}-phone`] && <p className={errText}>{fieldErrors[`team-${ti}-p-${pi}-phone`]}</p>}
+                            </div>
                           </div>
                           {t.participants.length > 1 && (
                             <button type="button" onClick={() => rmPart(ti, pi)} className="p-1 text-slate-500 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
