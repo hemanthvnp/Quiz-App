@@ -22,6 +22,7 @@ import {
   Minus,
   Plus,
   Loader2,
+  RotateCcw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event, Round, Team, Score, TeamWithScores, ActionType } from '../types';
@@ -97,6 +98,17 @@ export default function EventRound() {
   const [animatingTeamId, setAnimatingTeamId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  // ---- Undo state ----
+  const [lastAction, setLastAction] = useState<{
+    scoreId: string;
+    teamName: string;
+    actionType: ActionType;
+    points: number;
+    wasPositive: boolean;
+  } | null>(null);
+  const [undoing, setUndoing] = useState(false);
+  const undoTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roundDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -110,6 +122,22 @@ export default function EventRound() {
     if (!currentRound || rounds.length === 0) return false;
     return currentRound.round_number === Math.max(...rounds.map((r) => r.round_number));
   }, [currentRound, rounds]);
+
+  const canReopenRound = useMemo(() => {
+    if (!currentRound || currentRound.status !== 'completed') return false;
+    if (!event) return false;
+
+    // Event is completed — can reopen the last round
+    if (event.status === 'completed') {
+      const maxRoundNum = Math.max(...rounds.map((r) => r.round_number));
+      return currentRound.round_number === maxRoundNum;
+    }
+
+    // Event is active — can reopen the round immediately before the active round
+    const activeRound = rounds.find((r) => r.status === 'active');
+    if (!activeRound) return false;
+    return currentRound.round_number === activeRound.round_number - 1;
+  }, [currentRound, event, rounds]);
 
   // ---- Score calculations ----
   const teamsWithScores: TeamWithScores[] = useMemo(() => {
@@ -168,7 +196,7 @@ export default function EventRound() {
   const showFeedback = useCallback((msg: string) => {
     setScoringFeedback(msg);
     if (feedbackTimeout.current) clearTimeout(feedbackTimeout.current);
-    feedbackTimeout.current = setTimeout(() => setScoringFeedback(null), 2500);
+    feedbackTimeout.current = setTimeout(() => setScoringFeedback(null), 5000);
   }, []);
 
   // ---- Data fetching ----
@@ -264,6 +292,12 @@ export default function EventRound() {
       if (bonusModalOpen || leaderboardOpen) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        handleUndoScore();
+        return;
+      }
+
       if (e.key === '?') {
         e.preventDefault();
         setShortcutsOpen((v) => !v);
@@ -281,7 +315,7 @@ export default function EventRound() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [bonusModalOpen, leaderboardOpen]);
+  }, [bonusModalOpen, leaderboardOpen, handleUndoScore]);
 
   // ---- Scoring action ----
   const handleScore = useCallback(
@@ -314,7 +348,7 @@ export default function EventRound() {
       const isPositive = ['bounce', 'pounce_plus', 'buzzer', 'bonus'].includes(actionType) && points > 0;
 
       try {
-        const { error: insertError } = await supabase.from('scores').insert({
+        const { data: insertedScore, error: insertError } = await supabase.from('scores').insert({
           event_id: eventId,
           round_id: currentRound.id,
           team_id: teamId,
@@ -322,7 +356,7 @@ export default function EventRound() {
           action_type: actionType,
           points,
           winning_team_id: isPositive ? teamId : null,
-        });
+        }).select('id').single();
 
         if (insertError) throw insertError;
 
@@ -336,6 +370,17 @@ export default function EventRound() {
         const teamName = team?.name ?? 'Team';
         const sign = points >= 0 ? '+' : '';
         showFeedback(`${teamName}: ${sign}${points} pts (${actionType.replace('_', ' ')})`);
+
+        // Track for undo
+        if (undoTimeout.current) clearTimeout(undoTimeout.current);
+        setLastAction({
+          scoreId: insertedScore.id,
+          teamName,
+          actionType,
+          points,
+          wasPositive: isPositive,
+        });
+        undoTimeout.current = setTimeout(() => setLastAction(null), 30000);
 
         setAnimatingTeamId(teamId);
         setTimeout(() => setAnimatingTeamId(null), 500);
@@ -359,11 +404,46 @@ export default function EventRound() {
     setBonusTeamId(null);
   }, [bonusTeamId, bonusPoints, handleScore]);
 
+  // ---- Undo last score ----
+  const handleUndoScore = useCallback(async () => {
+    if (!lastAction || !eventId || undoing) return;
+    setUndoing(true);
+    try {
+      const { error } = await supabase
+        .from('scores')
+        .delete()
+        .eq('id', lastAction.scoreId);
+      if (error) throw error;
+
+      if (lastAction.wasPositive && event) {
+        const prevQ = event.current_question - 1;
+        await supabase
+          .from('events')
+          .update({ current_question: prevQ })
+          .eq('id', eventId);
+        setEvent((prev) =>
+          prev ? { ...prev, current_question: prevQ } : prev
+        );
+      }
+
+      setLastAction(null);
+      if (undoTimeout.current) clearTimeout(undoTimeout.current);
+      showFeedback('Score undone successfully');
+    } catch (err: unknown) {
+      showFeedback(
+        `Undo failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    } finally {
+      setUndoing(false);
+    }
+  }, [lastAction, eventId, event, undoing, showFeedback]);
+
   // ---- Round switching ----
   const switchRound = useCallback(
     (roundId: string) => {
       setCurrentRoundId(roundId);
       setRoundDropdownOpen(false);
+      setLastAction(null);
     },
     []
   );
@@ -405,6 +485,81 @@ export default function EventRound() {
       setSubmitting(false);
     }
   }, [currentRound, eventId, rounds, showFeedback]);
+
+  // ---- Reopen a completed round ----
+  const handleReopenRound = useCallback(async () => {
+    if (!currentRound || !eventId || submitting || !canReopenRound) return;
+    setSubmitting(true);
+    try {
+      // 1. Reactivate this round
+      await supabase
+        .from('rounds')
+        .update({ status: 'active' })
+        .eq('id', currentRound.id);
+
+      const wasEventCompleted = event?.status === 'completed';
+
+      // 2. If there's a next round that is currently active, set it to pending
+      const nextRound = rounds.find(
+        (r) => r.round_number === currentRound.round_number + 1
+      );
+      if (nextRound && nextRound.status === 'active') {
+        await supabase
+          .from('rounds')
+          .update({ status: 'pending' })
+          .eq('id', nextRound.id);
+      }
+
+      // 3. Derive current_question from existing scores in this round
+      const roundWinningScores = scores.filter(
+        (s) => s.round_id === currentRound.id && s.winning_team_id
+      );
+      const maxQ =
+        roundWinningScores.length > 0
+          ? Math.max(...roundWinningScores.map((s) => s.question_number)) + 1
+          : 1;
+
+      // 4. Update event state
+      const eventUpdates: Record<string, unknown> = {
+        current_round_id: currentRound.id,
+        current_question: maxQ,
+      };
+      if (wasEventCompleted) {
+        eventUpdates.status = 'active';
+      }
+      await supabase.from('events').update(eventUpdates).eq('id', eventId);
+
+      // 5. Update local state
+      setRounds((prev) =>
+        prev.map((r) => {
+          if (r.id === currentRound.id) return { ...r, status: 'active' as const };
+          if (nextRound && r.id === nextRound.id)
+            return { ...r, status: 'pending' as const };
+          return r;
+        })
+      );
+      setEvent((prev) =>
+        prev
+          ? {
+              ...prev,
+              current_round_id: currentRound.id,
+              current_question: maxQ,
+              ...(wasEventCompleted ? { status: 'active' as const } : {}),
+            }
+          : prev
+      );
+      setCurrentRoundId(currentRound.id);
+      setLastAction(null);
+
+      showFeedback(`Reopened ${currentRound.round_name}`);
+    } catch (err: unknown) {
+      showFeedback(
+        `Error: ${err instanceof Error ? err.message : 'Failed to reopen round'}`
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }, [currentRound, eventId, event, rounds, scores, submitting, canReopenRound, showFeedback]);
 
   // ---- Navigate to stats ----
   const handleViewStats = useCallback(() => {
@@ -837,17 +992,30 @@ export default function EventRound() {
               {isLastRound ? 'Final Results' : 'Round Stats'}
             </motion.button>
 
-            <motion.button
-              whileHover={{ scale: 1.03 }}
-              whileTap={{ scale: 0.97 }}
-              onClick={handleCompleteRound}
-              disabled={submitting}
-              className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <CheckCircle2 className="h-4 w-4" />
-              Complete Round
-              {!isLastRound && <ChevronRight className="h-4 w-4" />}
-            </motion.button>
+            {canReopenRound ? (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleReopenRound}
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Reopen Round
+              </motion.button>
+            ) : currentRound?.status === 'active' ? (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleCompleteRound}
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Complete Round
+                {!isLastRound && <ChevronRight className="h-4 w-4" />}
+              </motion.button>
+            ) : null}
           </div>
         </div>
       </div>
@@ -877,9 +1045,20 @@ export default function EventRound() {
             initial={{ opacity: 0, y: 40, x: '-50%' }}
             animate={{ opacity: 1, y: 0, x: '-50%' }}
             exit={{ opacity: 0, y: 20, x: '-50%' }}
-            className="fixed bottom-20 left-1/2 z-50 rounded-xl border border-white/[0.08] bg-slate-900/95 px-5 py-3 text-sm font-medium text-white shadow-2xl backdrop-blur-xl"
+            className="fixed bottom-20 left-1/2 z-50 flex items-center gap-3 rounded-xl border border-white/[0.08] bg-slate-900/95 px-5 py-3 shadow-2xl backdrop-blur-xl"
           >
-            {scoringFeedback}
+            <span className="text-sm font-medium text-white">{scoringFeedback}</span>
+            {lastAction && !undoing && (
+              <button
+                onClick={handleUndoScore}
+                className="ml-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+              >
+                Undo
+              </button>
+            )}
+            {undoing && (
+              <Loader2 className="ml-2 h-4 w-4 animate-spin text-amber-400" />
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -1085,6 +1264,7 @@ export default function EventRound() {
             </div>
             <div className="space-y-2">
               {[
+                { key: 'Ctrl+Z', desc: 'Undo last score' },
                 { key: '?', desc: 'Toggle shortcuts' },
                 { key: 'L', desc: 'Toggle rankings' },
                 { key: 'Q', desc: 'Toggle history' },

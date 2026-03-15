@@ -18,6 +18,7 @@ const supabase = createClient(
 );
 
 const SAMPLE_EVENT_NAME = '[SAMPLE] Annual Quiz Championship 2026';
+const ACTIVE_SAMPLE_EVENT_NAME = '[SAMPLE] Spring Quiz League 2026';
 
 const eventData = {
   name: SAMPLE_EVENT_NAME,
@@ -120,13 +121,87 @@ const scoreTemplates = [
   { ri: 2, ti: 3, q: 5, a: 'bonus', p: 5, w: true },
 ];
 
+// ---- Active sample event data (in-progress event) ----
+const activeEventData = {
+  name: ACTIVE_SAMPLE_EVENT_NAME,
+  description: '[SAMPLE] An active quiz event in progress — shows how the scoring page works.',
+  date: new Date().toISOString(),
+  quiz_master: 'Prof. David Kim',
+  quiz_master_email: 'david.k@example.com',
+  moderators: [{ name: 'Rachel Green', email: 'rachel.g@example.com' }],
+  number_of_rounds: 3,
+  points_system: 'Bounce: 10, Pounce+: 15, Pounce-: -5',
+  status: 'active',
+  current_question: 3,
+};
+
+const activeRoundsData = [
+  { round_name: 'History & Geography', round_number: 1, description: 'World history and geography', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5, status: 'completed' },
+  { round_name: 'Pop Culture', round_number: 2, description: 'Movies, music, and trends', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5, status: 'active' },
+  { round_name: 'Sports & Games', round_number: 3, description: 'Athletics and board games', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5, status: 'pending' },
+];
+
+const activeTeamsData = [
+  {
+    name: 'Quiz Wizards', lead: 'Dana Price',
+    participants: [
+      { name: 'Dana Price', student_id: 'STU101', email: 'dana.p@example.com', phone: '+1-555-0201' },
+      { name: 'Carlos Ruiz', student_id: 'STU102', email: 'carlos.r@example.com', phone: '+1-555-0202' },
+      { name: 'Fiona Walsh', student_id: 'STU103', email: 'fiona.w@example.com', phone: '+1-555-0203' },
+    ],
+  },
+  {
+    name: 'The Thinkers', lead: 'Mike Johnson',
+    participants: [
+      { name: 'Mike Johnson', student_id: 'STU104', email: 'mike.j@example.com', phone: '+1-555-0204' },
+      { name: 'Sophie Lee', student_id: 'STU105', email: 'sophie.l@example.com', phone: '+1-555-0205' },
+      { name: 'Tom Brown', student_id: 'STU106', email: 'tom.b@example.com', phone: '+1-555-0206' },
+    ],
+  },
+  {
+    name: 'Mind Benders', lead: 'Lisa Park',
+    participants: [
+      { name: 'Lisa Park', student_id: 'STU107', email: 'lisa.p@example.com', phone: '+1-555-0207' },
+      { name: 'James Chen', student_id: 'STU108', email: 'james.c@example.com', phone: '+1-555-0208' },
+      { name: 'Nora Ahmed', student_id: 'STU109', email: 'nora.a@example.com', phone: '+1-555-0209' },
+    ],
+  },
+  {
+    name: 'Fact Hunters', lead: 'Ryan Scott',
+    participants: [
+      { name: 'Ryan Scott', student_id: 'STU110', email: 'ryan.s@example.com', phone: '+1-555-0210' },
+      { name: 'Amy Liu', student_id: 'STU111', email: 'amy.l@example.com', phone: '+1-555-0211' },
+      { name: 'Ben Clark', student_id: 'STU112', email: 'ben.c@example.com', phone: '+1-555-0212' },
+    ],
+  },
+];
+
+// Round 1 complete (5 questions), Round 2 partial (questions 1-2 done, on Q3)
+const activeScoreTemplates = [
+  // ROUND 1 -- History & Geography (completed)
+  { ri: 0, ti: 0, q: 1, a: 'bounce', p: 10, w: true },
+  { ri: 0, ti: 2, q: 1, a: 'pounce_plus', p: 15, w: true },
+  { ri: 0, ti: 1, q: 2, a: 'bounce', p: 10, w: true },
+  { ri: 0, ti: 3, q: 2, a: 'pounce_minus', p: -5, w: false },
+  { ri: 0, ti: 2, q: 3, a: 'bounce', p: 10, w: true },
+  { ri: 0, ti: 0, q: 3, a: 'pounce_minus', p: -5, w: false },
+  { ri: 0, ti: 3, q: 4, a: 'bounce', p: 10, w: true },
+  { ri: 0, ti: 1, q: 4, a: 'bonus', p: 5, w: true },
+  { ri: 0, ti: 0, q: 5, a: 'pounce_plus', p: 15, w: true },
+  { ri: 0, ti: 2, q: 5, a: 'buzzer', p: 10, w: true },
+  // ROUND 2 -- Pop Culture (active, Q1-Q2 done, currently on Q3)
+  { ri: 1, ti: 1, q: 1, a: 'bounce', p: 10, w: true },
+  { ri: 1, ti: 0, q: 1, a: 'pounce_plus', p: 15, w: true },
+  { ri: 1, ti: 3, q: 2, a: 'bounce', p: 10, w: true },
+  { ri: 1, ti: 2, q: 2, a: 'pounce_minus', p: -5, w: false },
+];
+
 async function seed() {
   console.log('Checking for existing sample data...');
   const { data: existing } = await supabase.from('events').select('id').eq('name', SAMPLE_EVENT_NAME).limit(1);
   if (existing && existing.length > 0) {
-    console.log('Sample data already exists. Delete it first from the app, then re-run.');
-    process.exit(1);
-  }
+    console.log('Completed sample event already exists. Skipping.');
+  } else {
 
   console.log('Inserting sample event...');
   const { data: ev, error: ee } = await supabase.from('events').insert(eventData).select('id').single();
@@ -196,8 +271,67 @@ async function seed() {
     console.log(`  ${teamNames[ti].padEnd(18)} ${parts.join('  ')}  Total: ${total}`);
   }
 
-  console.log('\nDone! Sample data inserted successfully.');
+  console.log('\nDone! Completed sample data inserted successfully.');
   console.log(`Event ID: ${ev.id}`);
+  } // end else (completed event)
+
+  // ---- Insert active sample event ----
+  console.log('\nChecking for existing active sample event...');
+  const { data: existingActive } = await supabase.from('events').select('id').eq('name', ACTIVE_SAMPLE_EVENT_NAME).limit(1);
+  if (existingActive && existingActive.length > 0) {
+    console.log('Active sample event already exists. Skipping.');
+  } else {
+    console.log('Inserting active sample event...');
+    const { data: aev, error: aee } = await supabase.from('events').insert(activeEventData).select('id').single();
+    if (aee) { console.error('Active event insert failed:', aee.message); process.exit(1); }
+    console.log(`  Active event created: ${aev.id}`);
+
+    const { data: aRounds, error: are } = await supabase
+      .from('rounds')
+      .insert(activeRoundsData.map((r) => ({ ...r, event_id: aev.id })))
+      .select('id, round_number');
+    if (are) { console.error('Active rounds insert failed:', are.message); process.exit(1); }
+
+    const aRoundIdMap = new Map();
+    aRounds.forEach((r) => aRoundIdMap.set(r.round_number, r.id));
+    console.log(`  ${aRounds.length} rounds created`);
+
+    const aTeamIds = [];
+    for (const team of activeTeamsData) {
+      const { data: td, error: te } = await supabase
+        .from('teams').insert({ event_id: aev.id, name: team.name, lead: team.lead })
+        .select('id').single();
+      if (te) { console.error('Active team insert failed:', te.message); process.exit(1); }
+      aTeamIds.push(td.id);
+
+      const { error: pe } = await supabase.from('participants').insert(
+        team.participants.map((p) => ({ team_id: td.id, ...p }))
+      );
+      if (pe) { console.error('Active participants insert failed:', pe.message); process.exit(1); }
+    }
+    console.log(`  ${aTeamIds.length} teams with participants created`);
+
+    const aScoreRows = activeScoreTemplates.map((s) => ({
+      event_id: aev.id,
+      round_id: aRoundIdMap.get(s.ri + 1),
+      team_id: aTeamIds[s.ti],
+      question_number: s.q,
+      action_type: s.a,
+      points: s.p,
+      winning_team_id: s.w ? aTeamIds[s.ti] : null,
+    }));
+    const { error: ase } = await supabase.from('scores').insert(aScoreRows);
+    if (ase) { console.error('Active scores insert failed:', ase.message); process.exit(1); }
+    console.log(`  ${aScoreRows.length} score entries created`);
+
+    // Set current_round_id to round 2 (the active round)
+    const round2Id = aRoundIdMap.get(2);
+    if (round2Id) {
+      await supabase.from('events').update({ current_round_id: round2Id }).eq('id', aev.id);
+    }
+
+    console.log(`Active event ID: ${aev.id}`);
+  }
 }
 
 seed().catch((err) => { console.error(err); process.exit(1); });
