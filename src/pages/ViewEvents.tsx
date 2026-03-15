@@ -89,7 +89,7 @@ export default function ViewEvents() {
           </button>
           <h1 className="text-lg font-bold">Events</h1>
           <div className="flex-1" />
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => navigate('/events/create')} className="flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium transition-colors cursor-pointer">
+          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => navigate('/events/create')} className="flex items-center gap-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium transition-colors cursor-pointer">
             <Plus className="w-4 h-4" /> New Event
           </motion.button>
         </div>
@@ -98,7 +98,7 @@ export default function ViewEvents() {
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
         {loading && (
           <div className="flex flex-col items-center py-32 gap-3">
-            <div className="w-8 h-8 border-2 border-violet-500/30 border-t-violet-500 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
             <p className="text-sm text-slate-400">Loading events...</p>
           </div>
         )}
@@ -114,7 +114,7 @@ export default function ViewEvents() {
             </div>
             <h2 className="text-lg font-semibold text-white mb-1">No events yet</h2>
             <p className="text-sm text-slate-400 mb-5">Create your first event to get started</p>
-            <Link to="/events/create" className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-5 py-2.5 text-sm font-medium transition-colors">
+            <Link to="/events/create" className="flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 px-5 py-2.5 text-sm font-medium transition-colors">
               <Plus className="w-4 h-4" /> Create Event
             </Link>
           </div>
@@ -126,7 +126,7 @@ export default function ViewEvents() {
               <motion.div key={ev.id} variants={card} className="group rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] transition-colors overflow-hidden">
                 <button type="button" onClick={() => go(ev)} className="w-full text-left p-5">
                   <div className="flex items-start justify-between gap-3 mb-4">
-                    <h3 className="text-base font-semibold text-white leading-snug group-hover:text-violet-300 transition-colors">{ev.name}</h3>
+                    <h3 className="text-base font-semibold text-white leading-snug group-hover:text-cyan-300 transition-colors">{ev.name}</h3>
                     <Badge status={ev.status} />
                   </div>
                   <div className="space-y-2 text-sm text-slate-400">
@@ -145,7 +145,7 @@ export default function ViewEvents() {
                       {ev.quiz_master}
                     </div>
                   </div>
-                  <div className="mt-4 flex items-center gap-1 text-xs text-slate-500 group-hover:text-violet-400 transition-colors">
+                  <div className="mt-4 flex items-center gap-1 text-xs text-slate-500 group-hover:text-cyan-400 transition-colors">
                     {ev.status === 'completed' ? 'View Results' : 'View Rounds'} <ChevronRight className="w-3.5 h-3.5" />
                   </div>
                 </button>
