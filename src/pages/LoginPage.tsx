@@ -1,6 +1,8 @@
 import { useState, useEffect, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { X } from 'lucide-react';
+
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
@@ -25,8 +27,23 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 bg-slate-950">
-      {/* Soft glow */}
+
+<div className="min-h-screen flex items-center justify-center px-4 bg-slate-950 relative">
+  {/* Close button */}
+  <motion.button
+    className="fixed top-8 right-8 p-3 rounded-2xl bg-slate-900/80 border border-slate-700/50 hover:bg-slate-800/80 transition-all backdrop-blur-xl z-50"
+    initial={{ scale: 0, rotate: -180 }}
+    animate={{ scale: 1, rotate: 0 }}
+    whileHover={{ scale: 1.1 }}
+    whileTap={{ scale: 0.95 }}
+    onClick={() => navigate('/')}
+    title="Exit to Landing"
+  >
+    <X className="w-5 h-5 text-slate-400 hover:text-white" />
+  </motion.button>
+
+  {/* Soft glow */}
+
       <div className="fixed top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[500px] bg-violet-500/10 rounded-full blur-[120px] pointer-events-none" />
 
       <motion.div
