@@ -286,6 +286,40 @@ export default function EventRound() {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
+  // ---- Undo last score ----
+  const handleUndoScore = useCallback(async () => {
+    if (!lastAction || !eventId || undoing) return;
+    setUndoing(true);
+    try {
+      const { error } = await supabase
+        .from('scores')
+        .delete()
+        .eq('id', lastAction.scoreId);
+      if (error) throw error;
+
+      if (lastAction.wasPositive && event) {
+        const prevQ = event.current_question - 1;
+        await supabase
+          .from('events')
+          .update({ current_question: prevQ })
+          .eq('id', eventId);
+        setEvent((prev) =>
+          prev ? { ...prev, current_question: prevQ } : prev
+        );
+      }
+
+      setLastAction(null);
+      if (undoTimeout.current) clearTimeout(undoTimeout.current);
+      showFeedback('Score undone successfully');
+    } catch (err: unknown) {
+      showFeedback(
+        `Undo failed: ${err instanceof Error ? err.message : 'Unknown error'}`
+      );
+    } finally {
+      setUndoing(false);
+    }
+  }, [lastAction, eventId, event, undoing, showFeedback]);
+
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -403,40 +437,6 @@ export default function EventRound() {
     setBonusPoints('');
     setBonusTeamId(null);
   }, [bonusTeamId, bonusPoints, handleScore]);
-
-  // ---- Undo last score ----
-  const handleUndoScore = useCallback(async () => {
-    if (!lastAction || !eventId || undoing) return;
-    setUndoing(true);
-    try {
-      const { error } = await supabase
-        .from('scores')
-        .delete()
-        .eq('id', lastAction.scoreId);
-      if (error) throw error;
-
-      if (lastAction.wasPositive && event) {
-        const prevQ = event.current_question - 1;
-        await supabase
-          .from('events')
-          .update({ current_question: prevQ })
-          .eq('id', eventId);
-        setEvent((prev) =>
-          prev ? { ...prev, current_question: prevQ } : prev
-        );
-      }
-
-      setLastAction(null);
-      if (undoTimeout.current) clearTimeout(undoTimeout.current);
-      showFeedback('Score undone successfully');
-    } catch (err: unknown) {
-      showFeedback(
-        `Undo failed: ${err instanceof Error ? err.message : 'Unknown error'}`
-      );
-    } finally {
-      setUndoing(false);
-    }
-  }, [lastAction, eventId, event, undoing, showFeedback]);
 
   // ---- Round switching ----
   const switchRound = useCallback(
