@@ -72,8 +72,11 @@ export default function RoundStats() {
   const [roundScores, setRoundScores] = useState<TeamRoundScore[]>([]);
   const [overallScores, setOverallScores] = useState<TeamOverallScore[]>([]);
   const [questionDetails, setQuestionDetails] = useState<QuestionDetail[]>([]);
+  const [eventData, setEventData] = useState<any | null>(null);
   const [nextRoundId, setNextRoundId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const isEventCompleted = eventData?.status === 'completed';
 
   useEffect(() => {
     if (!eventId || !roundId) return;
@@ -81,13 +84,16 @@ export default function RoundStats() {
     const fetchData = async () => {
       setLoading(true);
 
-      const [roundRes, teamsRes, roundScoresRes, allScoresRes, allRoundsRes] = await Promise.all([
+      const [eventRes, roundRes, teamsRes, roundScoresRes, allScoresRes, allRoundsRes] = await Promise.all([
+        supabase.from('events').select('*').eq('id', eventId).single(),
         supabase.from('rounds').select('*').eq('id', roundId).single(),
         supabase.from('teams').select('*').eq('event_id', eventId),
         supabase.from('scores').select('*').eq('round_id', roundId),
         supabase.from('scores').select('*').eq('event_id', eventId),
         supabase.from('rounds').select('*').eq('event_id', eventId).order('round_number', { ascending: true }),
       ]);
+
+      setEventData(eventRes.data);
 
       const roundData = roundRes.data as Round | null;
       const teamsData = (teamsRes.data as Team[]) || [];
@@ -375,7 +381,9 @@ export default function RoundStats() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => navigate(`/events/${eventId}/final-stats`)}
-              className="px-5 py-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-slate-300 font-medium transition-colors hover:bg-white/[0.06] flex items-center gap-2"
+              disabled={!isEventCompleted}
+              className={`px-5 py-3 rounded-xl border font-medium transition-colors flex items-center gap-2 text-sm ${isEventCompleted ? 'border-white/[0.08] bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]' : 'border-slate-500/30 bg-slate-800/50 text-slate-500 cursor-not-allowed'}`}
+              title={!isEventCompleted ? 'Event must be completed first' : ''}
             >
               <Trophy className="w-4 h-4" />
               Final Results
