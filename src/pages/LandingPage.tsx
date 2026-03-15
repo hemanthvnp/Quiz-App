@@ -239,6 +239,112 @@ function NeuralNetworkCredits() {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Countdown Timer                                                    */
+/* ------------------------------------------------------------------ */
+const EVENT_DATE = new Date("2026-03-16T09:00:00+05:30");
+
+function useCountdown() {
+  const [timeLeft, setTimeLeft] = useState(getTimeLeft());
+
+  function getTimeLeft() {
+    const diff = Math.max(0, EVENT_DATE.getTime() - Date.now());
+    return {
+      days: Math.floor(diff / 86400000),
+      hours: Math.floor((diff % 86400000) / 3600000),
+      minutes: Math.floor((diff % 3600000) / 60000),
+      seconds: Math.floor((diff % 60000) / 1000),
+      ended: diff <= 0,
+    };
+  }
+
+  useEffect(() => {
+    const id = setInterval(() => setTimeLeft(getTimeLeft()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  return timeLeft;
+}
+
+function CountdownUnit({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <motion.div
+        key={value}
+        initial={{ rotateX: -60, opacity: 0 }}
+        animate={{ rotateX: 0, opacity: 1 }}
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/80 backdrop-blur border border-rose-200/60 shadow-lg shadow-rose-100/30 flex items-center justify-center"
+      >
+        <span className="text-2xl sm:text-3xl font-bold bg-gradient-to-b from-rose-500 to-pink-600 bg-clip-text text-transparent">
+          {String(value).padStart(2, "0")}
+        </span>
+      </motion.div>
+      <span className="mt-2 text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest">{label}</span>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Women's Day SVG icons                                              */
+/* ------------------------------------------------------------------ */
+function VenusSymbol({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="9" r="6" />
+      <line x1="12" y1="15" x2="12" y2="23" />
+      <line x1="9" y1="19" x2="15" y2="19" />
+    </svg>
+  );
+}
+
+function RaisedFist({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M12 2C10.34 2 9 3.34 9 5v3.26c-.6-.17-1.28-.26-2-.26-1.66 0-3 1.34-3 3v4c0 3.87 3.13 7 7 7h2c3.87 0 7-3.13 7-7v-4c0-1.66-1.34-3-3-3-.72 0-1.4.09-2 .26V5c0-1.66-1.34-3-3-3zm0 2c.55 0 1 .45 1 1v5h2V8c.55 0 1 .45 1 1v4c0 2.76-2.24 5-5 5h-2c-2.76 0-5-2.24-5-5v-4c0-.55.45-1 1-1h1v2h2V5c0-.55.45-1 1-1z" />
+    </svg>
+  );
+}
+
+function FloatingWomensIcon({ delay, x, icon }: { delay: number; x: string; icon: "venus" | "fist" | "flower" }) {
+  const icons = {
+    venus: <VenusSymbol className="w-5 h-5" />,
+    fist: <RaisedFist className="w-4 h-4" />,
+    flower: <span className="text-base">✿</span>,
+  };
+  return (
+    <motion.div
+      className="absolute text-rose-300/25 pointer-events-none select-none"
+      style={{ left: x, top: "-5%" }}
+      animate={{
+        y: ["0vh", "105vh"],
+        x: [0, -20, 30, -10, 0],
+        rotate: [0, -90, -180],
+        opacity: [0, 0.5, 0.5, 0],
+      }}
+      transition={{
+        duration: 14 + Math.random() * 6,
+        delay,
+        repeat: Infinity,
+        ease: "linear",
+      }}
+    >
+      {icons[icon]}
+    </motion.div>
+  );
+}
+
+const womensIcons = [
+  { id: "v1", delay: 1, x: "8%", icon: "venus" as const },
+  { id: "f1", delay: 4, x: "22%", icon: "flower" as const },
+  { id: "v2", delay: 7, x: "42%", icon: "venus" as const },
+  { id: "r1", delay: 2.5, x: "58%", icon: "fist" as const },
+  { id: "f2", delay: 9, x: "75%", icon: "flower" as const },
+  { id: "v3", delay: 5.5, x: "90%", icon: "venus" as const },
+  { id: "r2", delay: 11, x: "35%", icon: "fist" as const },
+  { id: "f3", delay: 6.5, x: "65%", icon: "flower" as const },
+];
+
+/* ------------------------------------------------------------------ */
 /*  Animation variants                                                 */
 /* ------------------------------------------------------------------ */
 const stagger = {
@@ -259,12 +365,14 @@ export default function LandingPage() {
   const { scrollYProgress } = useScroll();
   const heroOpacity = useTransform(scrollYProgress, [0, 0.25], [1, 0]);
   const heroScale = useTransform(scrollYProgress, [0, 0.25], [1, 0.97]);
+  const countdown = useCountdown();
 
   return (
     <div ref={ref} className="relative min-h-screen w-full overflow-x-hidden bg-gradient-to-b from-rose-50 via-white to-orange-50/30 text-slate-800">
-      {/* Falling petals */}
+      {/* Falling petals + Women's Day icons */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
         {petals.map((p) => <Petal key={p.id} {...p} />)}
+        {womensIcons.map((w) => <FloatingWomensIcon key={w.id} delay={w.delay} x={w.x} icon={w.icon} />)}
       </div>
 
       {/* Soft gradient orbs */}
@@ -286,9 +394,13 @@ export default function LandingPage() {
             <span className="text-rose-400 text-sm">✿</span>
           </motion.div>
 
-          {/* Title */}
+          {/* Title with Venus symbols */}
           <motion.h1 variants={fadeUp} className="text-5xl sm:text-6xl md:text-7xl font-extrabold leading-[1.1] tracking-tight">
-            <span className="text-slate-800">Celebrating</span>
+            <span className="inline-flex items-center gap-3 sm:gap-4 justify-center">
+              <VenusSymbol className="w-8 h-8 sm:w-10 sm:h-10 text-rose-300/60 -mt-1" />
+              <span className="text-slate-800">Celebrating</span>
+              <VenusSymbol className="w-8 h-8 sm:w-10 sm:h-10 text-rose-300/60 -mt-1" />
+            </span>
             <br />
             <span className="bg-gradient-to-r from-rose-500 via-pink-500 to-amber-500 bg-clip-text text-transparent">
               Women&apos;s Day
@@ -306,6 +418,25 @@ export default function LandingPage() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span className="text-sm font-semibold text-slate-600">16 March 2026</span>
+          </motion.div>
+
+          {/* Countdown Timer */}
+          <motion.div variants={fadeUp} className="mt-2">
+            {countdown.ended ? (
+              <div className="px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold text-lg shadow-lg shadow-rose-200/50">
+                Event is Live!
+              </div>
+            ) : (
+              <div className="flex items-center gap-3 sm:gap-4">
+                <CountdownUnit value={countdown.days} label="Days" />
+                <span className="text-2xl font-bold text-rose-300 mt-[-20px]">:</span>
+                <CountdownUnit value={countdown.hours} label="Hours" />
+                <span className="text-2xl font-bold text-rose-300 mt-[-20px]">:</span>
+                <CountdownUnit value={countdown.minutes} label="Mins" />
+                <span className="text-2xl font-bold text-rose-300 mt-[-20px]">:</span>
+                <CountdownUnit value={countdown.seconds} label="Secs" />
+              </div>
+            )}
           </motion.div>
 
           {/* Scroll hint */}
@@ -364,9 +495,31 @@ export default function LandingPage() {
       {/* ── DIVIDER ── */}
       <div className="relative z-10 flex items-center justify-center py-4">
         <div className="h-px w-20 bg-gradient-to-r from-transparent to-rose-200" />
-        <span className="mx-3 text-rose-300">✿</span>
+        <VenusSymbol className="mx-3 w-5 h-5 text-rose-300" />
         <div className="h-px w-20 bg-gradient-to-l from-transparent to-rose-200" />
       </div>
+
+      {/* ── INSPIRATIONAL QUOTE ── */}
+      <section className="relative z-10 px-6 py-16">
+        <motion.blockquote
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8 }}
+          className="max-w-xl mx-auto text-center"
+        >
+          <div className="flex justify-center gap-2 mb-4">
+            <span className="text-rose-300/50 text-2xl">✿</span>
+            <VenusSymbol className="w-6 h-6 text-rose-400/40" />
+            <span className="text-rose-300/50 text-2xl">✿</span>
+          </div>
+          <p className="text-xl sm:text-2xl font-medium text-slate-600 italic leading-relaxed">
+            &ldquo;There is no limit to what we, as women, can accomplish.&rdquo;
+          </p>
+          <p className="mt-3 text-sm font-semibold text-rose-400">— Michelle Obama</p>
+          <div className="mt-4 mx-auto h-0.5 w-12 rounded-full bg-gradient-to-r from-rose-300 to-pink-300" />
+        </motion.blockquote>
+      </section>
 
       {/* ── CREDITS (Neural Network) ── */}
       <footer className="relative z-10 px-6 py-20">
