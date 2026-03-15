@@ -108,8 +108,13 @@ export default function RoundStats() {
       });
       const rSorted = Array.from(rScoreMap.entries())
         .map(([teamId, roundScore]) => ({ teamId, teamName: teamMap.get(teamId) || 'Unknown', roundScore, rank: 0 }))
-        .sort((a, b) => b.roundScore - a.roundScore)
-        .map((e, i) => ({ ...e, rank: i + 1 }));
+        .sort((a, b) => b.roundScore - a.roundScore);
+      // Tie-aware ranking
+      let rRank = 1;
+      rSorted.forEach((e, i) => {
+        if (i > 0 && e.roundScore < rSorted[i - 1].roundScore) rRank = i + 1;
+        e.rank = rRank;
+      });
       setRoundScores(rSorted);
 
       // Overall cumulative scores (up to and including this round)
@@ -124,8 +129,13 @@ export default function RoundStats() {
       });
       const oSorted = Array.from(oScoreMap.entries())
         .map(([teamId, totalScore]) => ({ teamId, teamName: teamMap.get(teamId) || 'Unknown', totalScore, rank: 0 }))
-        .sort((a, b) => b.totalScore - a.totalScore)
-        .map((e, i) => ({ ...e, rank: i + 1 }));
+        .sort((a, b) => b.totalScore - a.totalScore);
+      // Tie-aware ranking
+      let oRank = 1;
+      oSorted.forEach((e, i) => {
+        if (i > 0 && e.totalScore < oSorted[i - 1].totalScore) oRank = i + 1;
+        e.rank = oRank;
+      });
       setOverallScores(oSorted);
 
       // Question-wise details with all actions

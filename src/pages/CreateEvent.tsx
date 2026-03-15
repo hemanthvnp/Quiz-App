@@ -6,11 +6,11 @@ import { supabase } from '../lib/supabase';
 import type { Moderator } from '../types';
 import { AppLayout, AppHeader } from '../components/Layout';
 
-interface RoundConfig { round_name: string; description: string; bounce_points: number; pounce_plus: number; pounce_minus: number; question_count: number; }
+interface RoundConfig { round_name: string; description: string; bounce_points: number; pounce_plus: number; pounce_minus: number; question_count: number; tiebreaker_questions: number; }
 interface ParticipantConfig { name: string; student_id: string; email: string; phone: string; }
 interface TeamConfig { team_name: string; team_lead: string; participants: ParticipantConfig[]; }
 
-const defaultRound = (i: number): RoundConfig => ({ round_name: `Round ${i + 1}`, description: '', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5 });
+const defaultRound = (i: number): RoundConfig => ({ round_name: `Round ${i + 1}`, description: '', bounce_points: 10, pounce_plus: 15, pounce_minus: -5, question_count: 5, tiebreaker_questions: 3 });
 const defaultParticipant = (): ParticipantConfig => ({ name: '', student_id: '', email: '', phone: '' });
 const defaultTeam = (i: number): TeamConfig => ({ team_name: `Team ${i + 1}`, team_lead: '', participants: [defaultParticipant()] });
 
@@ -119,7 +119,7 @@ export default function CreateEvent() {
       const { error: re } = await supabase.from('rounds').insert(rounds.map((r, i) => ({
         event_id: ev.id, round_name: r.round_name.trim() || `Round ${i + 1}`, round_number: i + 1,
         description: r.description.trim() || null, bounce_points: r.bounce_points, pounce_plus: r.pounce_plus,
-        pounce_minus: r.pounce_minus, question_count: r.question_count, status: 'pending' as const,
+        pounce_minus: r.pounce_minus, question_count: r.question_count, tiebreaker_questions: r.tiebreaker_questions, status: 'pending' as const,
       })));
       if (re) throw re;
 
@@ -250,11 +250,12 @@ export default function CreateEvent() {
               <div className="space-y-4 p-5 border-t border-white/[0.04]">
                 <div><label className={lbl}>Round Name</label><input placeholder={`Round ${i + 1}`} value={r.round_name} onChange={(e) => updRound(i, 'round_name', e.target.value)} className={inp} /></div>
                 <div><label className={lbl}>Description</label><textarea rows={2} placeholder="Describe..." value={r.description} onChange={(e) => updRound(i, 'description', e.target.value)} className={inp + ' resize-none'} /></div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
                   <div><label className={lbl}>Bounce</label><input type="number" value={r.bounce_points} onChange={(e) => updRound(i, 'bounce_points', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Pounce +</label><input type="number" value={r.pounce_plus} onChange={(e) => updRound(i, 'pounce_plus', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Pounce −</label><input type="number" value={r.pounce_minus} onChange={(e) => updRound(i, 'pounce_minus', +e.target.value || 0)} className={inp} /></div>
                   <div><label className={lbl}>Questions</label><input type="number" min={5} max={5} value={5} readOnly className={inp + ' opacity-60 cursor-not-allowed'} /></div>
+                  <div><label className={lbl}>Tiebreaker Q</label><input type="number" min={1} max={10} value={r.tiebreaker_questions} onChange={(e) => updRound(i, 'tiebreaker_questions', Math.max(1, Math.min(10, +e.target.value || 3)))} className={inp} /></div>
                 </div>
               </div>
             </Accordion>

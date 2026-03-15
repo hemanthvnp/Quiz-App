@@ -29,6 +29,7 @@ export interface Round {
   pounce_plus: number;
   pounce_minus: number;
   question_count: number;
+  tiebreaker_questions: number;
   status: 'pending' | 'active' | 'completed';
   created_at: string;
 }

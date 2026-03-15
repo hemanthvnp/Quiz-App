@@ -1,45 +1,257 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "framer-motion";
 
-/* ------------------------------------------------------------------ */
-/*  Petal particle                                                     */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  SHOOTING METEOR                                                    */
+/* ================================================================== */
+function Meteor({ delay }: { delay: number }) {
+  const top = `${Math.random() * 40}%`;
+  const left = `${Math.random() * 70 + 10}%`;
+  return (
+    <motion.div
+      className="absolute pointer-events-none"
+      style={{ top, left, width: 2, height: 80, rotate: 215, transformOrigin: "top center" }}
+      initial={{ opacity: 0, scaleY: 0 }}
+      animate={{ opacity: [0, 1, 1, 0], scaleY: [0, 1, 1, 1], y: [0, 0, 300, 600], x: [0, 0, -150, -300] }}
+      transition={{ duration: 1.5, delay, repeat: Infinity, repeatDelay: 8 + Math.random() * 12, ease: "easeIn" }}
+    >
+      <div className="w-full h-full bg-gradient-to-b from-white via-violet-300 to-transparent rounded-full" />
+      <div
+        className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-white"
+        style={{ boxShadow: "0 0 6px 3px rgba(255,255,255,0.8), 0 0 20px 6px rgba(167,139,250,0.4)" }}
+      />
+    </motion.div>
+  );
+}
+
+const meteors = Array.from({ length: 6 }, (_, i) => ({ id: i, delay: i * 3.5 + Math.random() * 2 }));
+
+/* ================================================================== */
+/*  AURORA BOREALIS                                                    */
+/* ================================================================== */
+function Aurora() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
+      {[0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute w-[150%] h-[300px]"
+          style={{
+            top: `${10 + i * 15}%`,
+            left: "-25%",
+            background: `linear-gradient(90deg, transparent, ${
+              i === 0 ? "rgba(139,92,246,0.3)" : i === 1 ? "rgba(236,72,153,0.2)" : "rgba(59,130,246,0.15)"
+            }, transparent)`,
+            filter: "blur(60px)",
+            borderRadius: "50%",
+          }}
+          animate={{
+            x: ["-10%", "10%", "-5%", "8%", "-10%"],
+            y: [0, -30, 20, -15, 0],
+            scaleX: [1, 1.2, 0.9, 1.1, 1],
+            opacity: [0.3, 0.6, 0.4, 0.7, 0.3],
+          }}
+          transition={{ duration: 12 + i * 4, repeat: Infinity, ease: "easeInOut", delay: i * 2 }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  FLOATING ORB                                                       */
+/* ================================================================== */
+function FloatingOrb({ color, size, x, y, delay }: { color: string; size: number; x: string; y: string; delay: number }) {
+  return (
+    <motion.div
+      className="absolute rounded-full pointer-events-none"
+      style={{ width: size, height: size, left: x, top: y, background: color, filter: `blur(${size * 0.6}px)` }}
+      animate={{ x: [0, 30, -20, 10, 0], y: [0, -25, 15, -10, 0], scale: [1, 1.15, 0.9, 1.05, 1] }}
+      transition={{ duration: 15 + delay, delay, repeat: Infinity, ease: "easeInOut" }}
+    />
+  );
+}
+
+/* ================================================================== */
+/*  SPARKLE                                                            */
+/* ================================================================== */
+function Sparkle({ delay, x }: { delay: number; x: string }) {
+  const top = useRef(`${20 + Math.random() * 60}%`);
+  return (
+    <motion.div
+      className="absolute w-1 h-1 rounded-full bg-white pointer-events-none"
+      style={{ left: x, top: top.current }}
+      animate={{ opacity: [0, 1, 0], scale: [0, 1.5, 0] }}
+      transition={{ duration: 2 + Math.random() * 2, delay, repeat: Infinity, ease: "easeInOut" }}
+    />
+  );
+}
+
+const sparkles = Array.from({ length: 25 }, (_, i) => ({ id: i, delay: Math.random() * 5, x: `${Math.random() * 100}%` }));
+
+/* ================================================================== */
+/*  PETAL                                                              */
+/* ================================================================== */
 function Petal({ delay, x }: { delay: number; x: string }) {
   return (
     <motion.div
-      className="absolute text-rose-300/40 pointer-events-none select-none"
+      className="absolute pointer-events-none select-none"
       style={{ left: x, top: "-5%" }}
-      animate={{
-        y: ["0vh", "105vh"],
-        x: [0, 30, -20, 40, 0],
-        rotate: [0, 180, 360],
-        opacity: [0, 0.7, 0.7, 0],
-      }}
-      transition={{
-        duration: 10 + Math.random() * 6,
-        delay,
-        repeat: Infinity,
-        ease: "linear",
-      }}
+      animate={{ y: ["0vh", "105vh"], x: [0, 25, -15, 30, 0], rotate: [0, 120, 240, 360], opacity: [0, 0.5, 0.5, 0] }}
+      transition={{ duration: 12 + Math.random() * 8, delay, repeat: Infinity, ease: "linear" }}
     >
-      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <ellipse cx="8" cy="8" rx="4" ry="8" />
+      <svg width="14" height="14" viewBox="0 0 16 16">
+        <defs>
+          <linearGradient id={`petal-${delay}`} x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0%" stopColor="rgba(244, 114, 182, 0.5)" />
+            <stop offset="100%" stopColor="rgba(168, 85, 247, 0.3)" />
+          </linearGradient>
+        </defs>
+        <ellipse cx="8" cy="8" rx="4" ry="8" fill={`url(#petal-${delay})`} />
       </svg>
     </motion.div>
   );
 }
 
-const petals = Array.from({ length: 18 }, (_, i) => ({
-  id: i,
-  delay: Math.random() * 8,
-  x: `${Math.random() * 100}%`,
-}));
+const petals = Array.from({ length: 18 }, (_, i) => ({ id: i, delay: Math.random() * 10, x: `${Math.random() * 100}%` }));
 
-/* ------------------------------------------------------------------ */
-/*  NPM Install Credits                                                */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  RUNNING MARQUEE                                                    */
+/* ================================================================== */
+const marqueeItems = [
+  "Empowerment", "✿", "Courage", "♀", "Strength", "✿", "Equality", "♀",
+  "Resilience", "✿", "Leadership", "♀", "Innovation", "✿", "Unity", "♀",
+];
 
+function Marquee({ direction = 1, speed = 30 }: { direction?: number; speed?: number }) {
+  return (
+    <div className="overflow-hidden whitespace-nowrap select-none pointer-events-none">
+      <motion.div
+        className="inline-flex gap-8 text-sm font-semibold"
+        animate={{ x: direction > 0 ? ["0%", "-50%"] : ["-50%", "0%"] }}
+        transition={{ duration: speed, repeat: Infinity, ease: "linear" }}
+      >
+        {[...marqueeItems, ...marqueeItems].map((item, i) => (
+          <span key={i} className={item.length > 2 ? "text-slate-600 uppercase tracking-[0.2em]" : "text-pink-500/40"}>
+            {item}
+          </span>
+        ))}
+      </motion.div>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  TYPEWRITER TEXT                                                     */
+/* ================================================================== */
+function Typewriter({ text, delay = 0, className }: { text: string; delay?: number; className?: string }) {
+  const [displayed, setDisplayed] = useState("");
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    const startTimer = setTimeout(() => setStarted(true), delay);
+    return () => clearTimeout(startTimer);
+  }, [delay]);
+
+  useEffect(() => {
+    if (!started) return;
+    if (displayed.length >= text.length) return;
+    const timer = setTimeout(() => {
+      setDisplayed(text.slice(0, displayed.length + 1));
+    }, 40);
+    return () => clearTimeout(timer);
+  }, [displayed, text, started]);
+
+  return (
+    <span className={className}>
+      {displayed}
+      {displayed.length < text.length && (
+        <motion.span
+          animate={{ opacity: [1, 0] }}
+          transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
+          className="inline-block w-[2px] h-[1em] bg-violet-400 ml-0.5 align-middle"
+        />
+      )}
+    </span>
+  );
+}
+
+/* ================================================================== */
+/*  3D TILT CARD                                                       */
+/* ================================================================== */
+function TiltCard({ children, className }: { children: React.ReactNode; className?: string }) {
+  const cardRef = useRef<HTMLDivElement>(null);
+  const rotateX = useMotionValue(0);
+  const rotateY = useMotionValue(0);
+  const glareX = useMotionValue(50);
+  const glareY = useMotionValue(50);
+
+  const springX = useSpring(rotateX, { stiffness: 150, damping: 20 });
+  const springY = useSpring(rotateY, { stiffness: 150, damping: 20 });
+
+  const handleMove = useCallback((e: React.MouseEvent) => {
+    const card = cardRef.current;
+    if (!card) return;
+    const rect = card.getBoundingClientRect();
+    const px = (e.clientX - rect.left) / rect.width;
+    const py = (e.clientY - rect.top) / rect.height;
+    rotateX.set((py - 0.5) * -20);
+    rotateY.set((px - 0.5) * 20);
+    glareX.set(px * 100);
+    glareY.set(py * 100);
+  }, [rotateX, rotateY, glareX, glareY]);
+
+  const handleLeave = useCallback(() => {
+    rotateX.set(0);
+    rotateY.set(0);
+  }, [rotateX, rotateY]);
+
+  return (
+    <motion.div
+      ref={cardRef}
+      onMouseMove={handleMove}
+      onMouseLeave={handleLeave}
+      style={{ rotateX: springX, rotateY: springY, transformPerspective: 800 }}
+      className={className}
+    >
+      {/* Holographic glare overlay */}
+      <motion.div
+        className="absolute inset-0 rounded-3xl pointer-events-none z-10 opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+        style={{
+          background: useTransform(
+            [glareX, glareY] as never,
+            ([gx, gy]: number[]) => `radial-gradient(circle at ${gx}% ${gy}%, rgba(255,255,255,0.08) 0%, transparent 60%)`
+          ),
+        }}
+      />
+      {children}
+    </motion.div>
+  );
+}
+
+/* ================================================================== */
+/*  ANIMATED RING PULSE (behind countdown)                             */
+/* ================================================================== */
+function RingPulse() {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+      {[0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full border border-violet-500/20"
+          style={{ width: 300 + i * 80, height: 300 + i * 80 }}
+          animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.08, 0.3] }}
+          transition={{ duration: 4, delay: i * 1.2, repeat: Infinity, ease: "easeInOut" }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  NPM INSTALL CREDITS                                                */
+/* ================================================================== */
 const packages = [
   { pkg: "hemanth-vasudev-np", version: "1.0.0", name: "Hemanth Vasudev N P" },
   { pkg: "nithiish-sd", version: "1.0.0", name: "Nithiish S D" },
@@ -49,8 +261,7 @@ function NpmInstallCredits() {
   const [step, setStep] = useState(-1);
 
   useEffect(() => {
-    if (step < 0) return;
-    if (step > packages.length) return;
+    if (step < 0 || step > packages.length) return;
     const timer = setTimeout(() => setStep((s) => s + 1), 1200);
     return () => clearTimeout(timer);
   }, [step]);
@@ -64,49 +275,44 @@ function NpmInstallCredits() {
       onViewportEnter={() => setStep(0)}
       className="w-full max-w-lg mx-auto"
     >
-      <div className="relative rounded-2xl overflow-hidden border border-slate-700/60 bg-[#1a1b26] shadow-2xl font-mono text-sm">
+      <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] bg-slate-900/80 backdrop-blur-xl shadow-2xl shadow-violet-500/5 font-mono text-sm">
         {/* Terminal title bar */}
-        <div className="flex items-center gap-2 px-4 py-2.5 bg-[#16161e] border-b border-slate-700/40">
+        <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-950/60 border-b border-white/[0.06]">
           <div className="flex gap-1.5">
             <span className="w-3 h-3 rounded-full bg-red-400/80" />
             <span className="w-3 h-3 rounded-full bg-yellow-400/80" />
             <span className="w-3 h-3 rounded-full bg-green-400/80" />
           </div>
-          <span className="ml-2 text-xs text-slate-400">~/qfactor-challenge</span>
+          <span className="ml-2 text-xs text-slate-500">~/qfactor-challenge</span>
         </div>
 
         <div className="px-5 py-5 space-y-4">
-          {/* Command line */}
           <div className="flex items-center gap-2">
-            <span className="text-green-400">$</span>
+            <span className="text-emerald-400">$</span>
             <span className="text-slate-300">npm install</span>
-            <span className="text-pink-400">qfactor-team</span>
+            <span className="text-violet-400">qfactor-team</span>
           </div>
 
-          {/* Package installations */}
           {packages.map((p, idx) => (
             <motion.div
               key={p.pkg}
               initial={{ opacity: 0, height: 0 }}
-              animate={step > idx ? { opacity: 1, height: 'auto' } : {}}
+              animate={step > idx ? { opacity: 1, height: "auto" } : {}}
               transition={{ duration: 0.4 }}
               className="overflow-hidden"
             >
               <div className="space-y-2">
-                {/* Package name + version */}
                 <div className="flex items-center gap-2">
                   <span className="text-emerald-400">+</span>
                   <span className="text-white font-semibold">{p.pkg}</span>
-                  <span className="text-slate-500">@{p.version}</span>
+                  <span className="text-slate-600">@{p.version}</span>
                 </div>
-
-                {/* Progress bar */}
                 <div className="ml-4 flex items-center gap-3">
-                  <div className="flex-1 h-1.5 rounded-full bg-slate-700/60 overflow-hidden">
+                  <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-pink-500 to-rose-400"
-                      initial={{ width: '0%' }}
-                      animate={step > idx ? { width: '100%' } : {}}
+                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500"
+                      initial={{ width: "0%" }}
+                      animate={step > idx ? { width: "100%" } : {}}
                       transition={{ duration: 0.8, delay: 0.1 }}
                     />
                   </div>
@@ -119,41 +325,37 @@ function NpmInstallCredits() {
                     done
                   </motion.span>
                 </div>
-
-                {/* Real name reveal */}
                 <motion.div
                   className="ml-4 flex items-center gap-2"
                   initial={{ opacity: 0, x: -10 }}
                   animate={step > idx ? { opacity: 1, x: 0 } : {}}
                   transition={{ delay: 0.7, duration: 0.3 }}
                 >
-                  <span className="text-slate-500 text-xs">-&gt;</span>
+                  <span className="text-slate-600 text-xs">-&gt;</span>
                   <span className="text-amber-300 text-xs">{p.name}</span>
-                  <span className="text-slate-600 text-xs">// Developer</span>
+                  <span className="text-slate-700 text-xs">// Developer</span>
                 </motion.div>
               </div>
             </motion.div>
           ))}
 
-          {/* Summary line */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={step > packages.length - 1 ? { opacity: 1 } : {}}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="pt-2 border-t border-slate-700/30"
+            className="pt-2 border-t border-white/[0.06]"
           >
-            <span className="text-slate-400 text-xs">
+            <span className="text-slate-500 text-xs">
               added <span className="text-white font-semibold">{packages.length} contributors</span> in <span className="text-white">0.3s</span>
             </span>
           </motion.div>
 
-          {/* Blinking cursor */}
           <div className="flex items-center gap-2 pt-1">
-            <span className="text-green-400">$</span>
+            <span className="text-emerald-400">$</span>
             <motion.span
               animate={{ opacity: [1, 0] }}
               transition={{ duration: 0.8, repeat: Infinity, repeatType: "reverse" }}
-              className="inline-block w-2 h-4 bg-slate-400"
+              className="inline-block w-2 h-4 bg-slate-500"
             />
           </div>
         </div>
@@ -162,9 +364,9 @@ function NpmInstallCredits() {
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Countdown Timer                                                    */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  COUNTDOWN TIMER                                                    */
+/* ================================================================== */
 const EVENT_DATE = new Date("2026-03-16T09:00:00+05:30");
 
 function useCountdown() {
@@ -189,28 +391,48 @@ function useCountdown() {
   return timeLeft;
 }
 
-function CountdownUnit({ value, label }: { value: number; label: string }) {
+/* Flip-style countdown digit */
+function FlipDigit({ value }: { value: number }) {
   return (
-    <div className="flex flex-col items-center">
-      <motion.div
-        key={value}
-        initial={{ rotateX: -60, opacity: 0 }}
-        animate={{ rotateX: 0, opacity: 1 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-        className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white/80 backdrop-blur border border-rose-200/60 shadow-lg shadow-rose-100/30 flex items-center justify-center"
-      >
-        <span className="text-2xl sm:text-3xl font-bold bg-gradient-to-b from-rose-500 to-pink-600 bg-clip-text text-transparent">
+    <div className="relative w-10 h-14 sm:w-14 sm:h-18 overflow-hidden">
+      <AnimatePresence mode="popLayout">
+        <motion.div
+          key={value}
+          initial={{ y: -60, opacity: 0, rotateX: -90 }}
+          animate={{ y: 0, opacity: 1, rotateX: 0 }}
+          exit={{ y: 60, opacity: 0, rotateX: 90 }}
+          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
+          className="absolute inset-0 flex items-center justify-center text-2xl sm:text-4xl font-bold bg-gradient-to-b from-white to-violet-200 bg-clip-text text-transparent tabular-nums"
+          style={{ transformPerspective: 200 }}
+        >
           {String(value).padStart(2, "0")}
-        </span>
-      </motion.div>
-      <span className="mt-2 text-[10px] sm:text-xs font-medium text-slate-400 uppercase tracking-widest">{label}</span>
+        </motion.div>
+      </AnimatePresence>
     </div>
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Women's Day SVG icons                                              */
-/* ------------------------------------------------------------------ */
+function CountdownUnit({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex flex-col items-center">
+      <div className="relative rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-violet-500/10 overflow-hidden">
+        {/* Shine strip */}
+        <motion.div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.05) 45%, transparent 50%)" }}
+          animate={{ x: ["-100%", "200%"] }}
+          transition={{ duration: 3, repeat: Infinity, repeatDelay: 4 }}
+        />
+        <FlipDigit value={value} />
+      </div>
+      <span className="mt-2 text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-widest">{label}</span>
+    </div>
+  );
+}
+
+/* ================================================================== */
+/*  VENUS SYMBOL                                                       */
+/* ================================================================== */
 function VenusSymbol({ className }: { className?: string }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
@@ -221,244 +443,387 @@ function VenusSymbol({ className }: { className?: string }) {
   );
 }
 
-function RaisedFist({ className }: { className?: string }) {
+/* ================================================================== */
+/*  ANIMATED BORDER BUTTON                                             */
+/* ================================================================== */
+function GlowButton({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
   return (
-    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
-      <path d="M12 2C10.34 2 9 3.34 9 5v3.26c-.6-.17-1.28-.26-2-.26-1.66 0-3 1.34-3 3v4c0 3.87 3.13 7 7 7h2c3.87 0 7-3.13 7-7v-4c0-1.66-1.34-3-3-3-.72 0-1.4.09-2 .26V5c0-1.66-1.34-3-3-3zm0 2c.55 0 1 .45 1 1v5h2V8c.55 0 1 .45 1 1v4c0 2.76-2.24 5-5 5h-2c-2.76 0-5-2.24-5-5v-4c0-.55.45-1 1-1h1v2h2V5c0-.55.45-1 1-1z" />
-    </svg>
-  );
-}
-
-function FloatingWomensIcon({ delay, x, icon }: { delay: number; x: string; icon: "venus" | "fist" | "flower" }) {
-  const icons = {
-    venus: <VenusSymbol className="w-5 h-5" />,
-    fist: <RaisedFist className="w-4 h-4" />,
-    flower: <span className="text-base">✿</span>,
-  };
-  return (
-    <motion.div
-      className="absolute text-rose-300/25 pointer-events-none select-none"
-      style={{ left: x, top: "-5%" }}
-      animate={{
-        y: ["0vh", "105vh"],
-        x: [0, -20, 30, -10, 0],
-        rotate: [0, -90, -180],
-        opacity: [0, 0.5, 0.5, 0],
-      }}
-      transition={{
-        duration: 14 + Math.random() * 6,
-        delay,
-        repeat: Infinity,
-        ease: "linear",
-      }}
+    <motion.button
+      onClick={onClick}
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.97 }}
+      className="relative group w-full py-4 rounded-xl font-bold text-white overflow-hidden cursor-pointer"
     >
-      {icons[icon]}
-    </motion.div>
+      {/* Animated gradient border */}
+      <motion.div
+        className="absolute inset-0 rounded-xl p-[2px]"
+        style={{ background: "conic-gradient(from 0deg, #7c3aed, #ec4899, #3b82f6, #7c3aed)" }}
+        animate={{ rotate: [0, 360] }}
+        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+      />
+      {/* Inner fill */}
+      <div className="absolute inset-[2px] rounded-[10px] bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600" />
+      {/* Running shimmer */}
+      <motion.div
+        className="absolute inset-[2px] rounded-[10px] pointer-events-none"
+        style={{ background: "linear-gradient(105deg, transparent 30%, rgba(255,255,255,0.15) 50%, transparent 70%)" }}
+        animate={{ x: ["-100%", "200%"] }}
+        transition={{ duration: 2, repeat: Infinity, repeatDelay: 3 }}
+      />
+      <span className="relative z-10 flex items-center justify-center gap-2">
+        {children}
+        <motion.span animate={{ x: [0, 4, 0] }} transition={{ duration: 1.5, repeat: Infinity }}>
+          &rarr;
+        </motion.span>
+      </span>
+    </motion.button>
   );
 }
 
-const womensIcons = [
-  { id: "v1", delay: 1, x: "8%", icon: "venus" as const },
-  { id: "f1", delay: 4, x: "22%", icon: "flower" as const },
-  { id: "v2", delay: 7, x: "42%", icon: "venus" as const },
-  { id: "r1", delay: 2.5, x: "58%", icon: "fist" as const },
-  { id: "f2", delay: 9, x: "75%", icon: "flower" as const },
-  { id: "v3", delay: 5.5, x: "90%", icon: "venus" as const },
-  { id: "r2", delay: 11, x: "35%", icon: "fist" as const },
-  { id: "f3", delay: 6.5, x: "65%", icon: "flower" as const },
-];
+/* ================================================================== */
+/*  ANIMATION VARIANTS                                                 */
+/* ================================================================== */
+const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.12, delayChildren: 0.2 } } };
+const fadeUp = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: "easeOut" as const } } };
+const scaleIn = { hidden: { opacity: 0, scale: 0.8 }, show: { opacity: 1, scale: 1, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as const } } };
 
-/* ------------------------------------------------------------------ */
-/*  Animation variants                                                 */
-/* ------------------------------------------------------------------ */
-const stagger = {
-  hidden: {},
-  show: { transition: { staggerChildren: 0.12, delayChildren: 0.2 } },
-};
-const fadeUp = {
-  hidden: { opacity: 0, y: 30 },
-  show: { opacity: 1, y: 0, transition: { duration: 0.6, ease: "easeOut" as const } },
-};
-
-/* ------------------------------------------------------------------ */
-/*  Landing Page                                                       */
-/* ------------------------------------------------------------------ */
+/* ================================================================== */
+/*  LANDING PAGE                                                       */
+/* ================================================================== */
 export default function LandingPage() {
   const navigate = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll();
-  const heroOpacity = useTransform(scrollYProgress, [0, 0.25], [1, 0]);
-  const heroScale = useTransform(scrollYProgress, [0, 0.25], [1, 0.97]);
+  const heroOpacity = useTransform(scrollYProgress, [0, 0.18], [1, 0]);
+  const heroScale = useTransform(scrollYProgress, [0, 0.18], [1, 0.92]);
+  const heroBgY = useTransform(scrollYProgress, [0, 0.3], [0, -100]);
   const countdown = useCountdown();
 
+  // Mouse glow
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+  const smoothX = useSpring(mouseX, { stiffness: 40, damping: 25 });
+  const smoothY = useSpring(mouseY, { stiffness: 40, damping: 25 });
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    mouseX.set(e.clientX - rect.left);
+    mouseY.set(e.clientY - rect.top);
+  };
+
   return (
-    <div ref={ref} className="relative min-h-screen w-full overflow-x-hidden bg-gradient-to-b from-rose-50 via-white to-orange-50/30 text-slate-800">
-      {/* Falling petals + Women's Day icons */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-0">
+    <div ref={ref} className="relative min-h-screen w-full overflow-x-hidden bg-slate-950 text-white" onMouseMove={handleMouseMove}>
+      {/* ── BACKGROUND LAYERS ── */}
+      <div className="fixed inset-0 bg-gradient-to-b from-slate-950 via-[#0c1222] to-slate-950" />
+
+      {/* Aurora */}
+      <div className="fixed inset-0 pointer-events-none">
+        <Aurora />
+      </div>
+
+      {/* Floating orbs */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <FloatingOrb color="rgba(139, 92, 246, 0.15)" size={500} x="-5%" y="-10%" delay={0} />
+        <FloatingOrb color="rgba(236, 72, 153, 0.12)" size={400} x="65%" y="5%" delay={3} />
+        <FloatingOrb color="rgba(59, 130, 246, 0.08)" size={350} x="80%" y="60%" delay={6} />
+        <FloatingOrb color="rgba(244, 114, 182, 0.1)" size={300} x="10%" y="70%" delay={9} />
+      </div>
+
+      {/* Grid */}
+      <div className="fixed inset-0 pointer-events-none opacity-[0.03]" style={{
+        backgroundImage: `linear-gradient(rgba(139, 92, 246, 0.4) 1px, transparent 1px), linear-gradient(90deg, rgba(139, 92, 246, 0.4) 1px, transparent 1px)`,
+        backgroundSize: "60px 60px",
+      }} />
+
+      {/* Meteors */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
+        {meteors.map((m) => <Meteor key={m.id} delay={m.delay} />)}
+      </div>
+
+      {/* Petals */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
         {petals.map((p) => <Petal key={p.id} {...p} />)}
-        {womensIcons.map((w) => <FloatingWomensIcon key={w.id} delay={w.delay} x={w.x} icon={w.icon} />)}
       </div>
 
-      {/* Soft gradient orbs */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-rose-200/30 rounded-full blur-[100px]" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] bg-amber-100/40 rounded-full blur-[100px]" />
+      {/* Sparkles */}
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
+        {sparkles.map((s) => <Sparkle key={s.id} delay={s.delay} x={s.x} />)}
       </div>
 
-      {/* ── HERO ── */}
+      {/* Mouse tracking glow */}
+      <motion.div
+        className="fixed pointer-events-none z-[2]"
+        style={{
+          x: smoothX, y: smoothY,
+          width: 600, height: 600, marginLeft: -300, marginTop: -300,
+          background: "radial-gradient(circle, rgba(139, 92, 246, 0.06) 0%, rgba(236,72,153,0.03) 40%, transparent 70%)",
+        }}
+      />
+
+      {/* ── HERO SECTION ── */}
       <motion.section
-        style={{ opacity: heroOpacity, scale: heroScale }}
+        style={{ opacity: heroOpacity, scale: heroScale, y: heroBgY }}
         className="relative z-10 flex flex-col items-center justify-center min-h-screen px-6 text-center"
       >
-        <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col items-center gap-5 max-w-2xl">
+        <motion.div variants={stagger} initial="hidden" animate="show" className="flex flex-col items-center gap-6 max-w-3xl">
           {/* Badge */}
-          <motion.div variants={fadeUp} className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-rose-100/70 backdrop-blur border border-rose-200/60">
-            <span className="text-rose-400 text-sm">✿</span>
-            <span className="text-xs font-medium text-rose-500 tracking-wide uppercase">International Women&apos;s Day</span>
-            <span className="text-rose-400 text-sm">✿</span>
+          <motion.div
+            variants={fadeUp}
+            className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/[0.05] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-violet-500/5"
+          >
+            <motion.span animate={{ rotate: [0, 360] }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} className="text-pink-400 text-sm">
+              ✿
+            </motion.span>
+            <span className="text-xs font-semibold text-pink-300/90 tracking-wider uppercase">International Women&apos;s Day</span>
+            <motion.span animate={{ rotate: [360, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} className="text-pink-400 text-sm">
+              ✿
+            </motion.span>
           </motion.div>
 
-          {/* Title with Venus symbols */}
-          <motion.h1 variants={fadeUp} className="text-5xl sm:text-6xl md:text-7xl font-extrabold leading-[1.1] tracking-tight">
-            <span className="inline-flex items-center gap-3 sm:gap-4 justify-center">
-              <VenusSymbol className="w-8 h-8 sm:w-10 sm:h-10 text-rose-300/60 -mt-1" />
-              <span className="text-slate-800">Celebrating</span>
-              <VenusSymbol className="w-8 h-8 sm:w-10 sm:h-10 text-rose-300/60 -mt-1" />
+          {/* Title */}
+          <motion.h1 variants={fadeUp} className="text-5xl sm:text-7xl md:text-8xl font-extrabold leading-[1.05] tracking-tight">
+            <span className="inline-flex items-center gap-3 sm:gap-5 justify-center">
+              <motion.span animate={{ rotate: [0, 15, -15, 0], scale: [1, 1.1, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
+                <VenusSymbol className="w-8 h-8 sm:w-12 sm:h-12 text-pink-400/40" />
+              </motion.span>
+              <span className="text-white">Celebrating</span>
+              <motion.span animate={{ rotate: [0, -15, 15, 0], scale: [1, 1.1, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 2 }}>
+                <VenusSymbol className="w-8 h-8 sm:w-12 sm:h-12 text-pink-400/40" />
+              </motion.span>
             </span>
             <br />
-            <span className="bg-gradient-to-r from-rose-500 via-pink-500 to-amber-500 bg-clip-text text-transparent">
-              Women&apos;s Day
-            </span>
+            <span className="landing-gradient-text">Women&apos;s Day</span>
           </motion.h1>
 
-          {/* Subtitle */}
-          <motion.p variants={fadeUp} className="text-lg text-slate-500 max-w-md leading-relaxed">
-            Hosted by <span className="text-rose-500 font-semibold">CSA</span> &amp; the <span className="text-rose-500 font-semibold">Department of AMCS</span>, PSG College of Technology
-          </motion.p>
+          {/* Glowing line */}
+          <motion.div
+            variants={fadeUp}
+            className="h-px w-40 mx-auto"
+            style={{ background: "linear-gradient(90deg, transparent, rgba(168,85,247,0.6), rgba(236,72,153,0.6), transparent)" }}
+          />
 
-          {/* Date */}
-          <motion.div variants={fadeUp} className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/70 border border-slate-200/60 backdrop-blur shadow-sm">
-            <svg className="w-4 h-4 text-rose-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className="text-sm font-semibold text-slate-600">16 March 2026</span>
+          {/* Typewriter subtitle */}
+          <motion.div variants={fadeUp} className="text-base sm:text-lg text-slate-400 max-w-lg leading-relaxed">
+            <Typewriter
+              text="Hosted by CSA & Department of AMCS — PSG College of Technology"
+              delay={1500}
+              className="text-slate-400"
+            />
           </motion.div>
 
-          {/* Countdown Timer */}
-          <motion.div variants={fadeUp} className="mt-2">
+          {/* Date chip */}
+          <motion.div
+            variants={fadeUp}
+            className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-md"
+          >
+            <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }}>
+              <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </motion.div>
+            <span className="text-sm font-semibold text-slate-300">16 March 2026</span>
+          </motion.div>
+
+          {/* Countdown */}
+          <motion.div variants={scaleIn} className="mt-4 relative">
+            <RingPulse />
             {countdown.ended ? (
-              <div className="px-6 py-3 rounded-2xl bg-gradient-to-r from-rose-500 to-pink-500 text-white font-bold text-lg shadow-lg shadow-rose-200/50">
+              <motion.div
+                animate={{
+                  boxShadow: ["0 0 30px rgba(139,92,246,0.3)", "0 0 80px rgba(139,92,246,0.5)", "0 0 30px rgba(139,92,246,0.3)"],
+                  scale: [1, 1.03, 1],
+                }}
+                transition={{ duration: 2, repeat: Infinity }}
+                className="px-10 py-5 rounded-2xl bg-gradient-to-r from-violet-600 to-pink-600 text-white font-bold text-2xl shadow-2xl"
+              >
                 Event is Live!
-              </div>
+              </motion.div>
             ) : (
-              <div className="flex items-center gap-3 sm:gap-4">
+              <div className="flex items-center gap-2 sm:gap-3">
                 <CountdownUnit value={countdown.days} label="Days" />
-                <span className="text-2xl font-bold text-rose-300 mt-[-20px]">:</span>
+                <span className="text-2xl font-bold text-violet-400/30 mt-[-20px]">:</span>
                 <CountdownUnit value={countdown.hours} label="Hours" />
-                <span className="text-2xl font-bold text-rose-300 mt-[-20px]">:</span>
+                <span className="text-2xl font-bold text-violet-400/30 mt-[-20px]">:</span>
                 <CountdownUnit value={countdown.minutes} label="Mins" />
-                <span className="text-2xl font-bold text-rose-300 mt-[-20px]">:</span>
+                <span className="text-2xl font-bold text-violet-400/30 mt-[-20px]">:</span>
                 <CountdownUnit value={countdown.seconds} label="Secs" />
               </div>
             )}
           </motion.div>
 
           {/* Scroll hint */}
-          <motion.div variants={fadeUp} className="mt-10" animate={{ y: [0, 8, 0] }} transition={{ duration: 2, repeat: Infinity }}>
-            <svg className="w-5 h-5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-            </svg>
+          <motion.div variants={fadeUp} className="mt-14" animate={{ y: [0, 12, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}>
+            <div className="flex flex-col items-center gap-2">
+              <span className="text-[10px] text-slate-600 uppercase tracking-[0.25em]">Scroll</span>
+              <div className="w-5 h-8 rounded-full border border-slate-700 flex items-start justify-center p-1">
+                <motion.div
+                  className="w-1 h-2 rounded-full bg-violet-400"
+                  animate={{ y: [0, 10, 0], opacity: [1, 0.3, 1] }}
+                  transition={{ duration: 2, repeat: Infinity }}
+                />
+              </div>
+            </div>
           </motion.div>
         </motion.div>
       </motion.section>
 
-      {/* ── EVENTS SECTION ── */}
-      <section className="relative z-10 px-6 py-24">
-        <motion.div initial={{ opacity: 0, y: 30 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="text-center mb-14">
-          <h2 className="text-3xl sm:text-4xl font-bold text-slate-800">Featured Event</h2>
-          <div className="mt-3 mx-auto h-1 w-16 rounded-full bg-gradient-to-r from-rose-400 to-amber-400" />
+      {/* ── MARQUEE STRIP ── */}
+      <div className="relative z-10 py-6 border-y border-white/[0.04] bg-white/[0.01] backdrop-blur-sm space-y-3 overflow-hidden">
+        <Marquee direction={1} speed={35} />
+        <Marquee direction={-1} speed={28} />
+      </div>
+
+      {/* ── FEATURED EVENT ── */}
+      <section className="relative z-10 px-6 py-28">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7 }}
+          className="text-center mb-16"
+        >
+          <h2 className="text-3xl sm:text-4xl font-bold text-white">Featured Event</h2>
+          <div className="mt-4 mx-auto h-1 w-16 rounded-full bg-gradient-to-r from-violet-500 to-pink-500" />
         </motion.div>
 
-        <div className="max-w-md mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 40 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.7 }}
-            whileHover={{ y: -4 }}
-            className="group relative rounded-3xl bg-white/70 backdrop-blur-lg border border-rose-100 p-8 shadow-lg shadow-rose-100/40 transition-shadow hover:shadow-xl hover:shadow-rose-200/40"
-          >
-            <div className="absolute top-0 left-8 right-8 h-1 rounded-b-full bg-gradient-to-r from-rose-400 via-pink-400 to-amber-400" />
+        <div className="max-w-md mx-auto" style={{ perspective: 800 }}>
+          <TiltCard className="group relative rounded-3xl bg-white/[0.04] backdrop-blur-xl border border-white/[0.08] p-8 shadow-2xl shadow-violet-500/5 transition-colors hover:border-violet-500/20">
+            {/* Top gradient bar */}
+            <div className="absolute top-0 left-8 right-8 h-px rounded-b-full bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
 
-            <div className="mb-5 inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-rose-50 text-rose-500">
-              <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            {/* Animated icon */}
+            <motion.div
+              className="mb-5 inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 text-violet-400"
+              animate={{ rotate: [0, 5, -5, 0] }}
+              transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+            >
+              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-            </div>
+            </motion.div>
 
-            <span className="inline-block px-3 py-1 mb-3 rounded-full bg-rose-50 text-rose-500 text-xs font-semibold tracking-wide uppercase">Live Quiz</span>
+            {/* Badge */}
+            <motion.span
+              animate={{ boxShadow: ["0 0 0 rgba(16,185,129,0)", "0 0 12px rgba(16,185,129,0.3)", "0 0 0 rgba(16,185,129,0)"] }}
+              transition={{ duration: 2, repeat: Infinity }}
+              className="inline-block px-3 py-1 mb-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold tracking-wide uppercase"
+            >
+              Live Quiz
+            </motion.span>
 
-            <h3 className="text-2xl font-bold text-slate-800 mb-2">Quiz Event</h3>
-            <p className="text-slate-500 text-sm mb-1">Test your knowledge in our exciting quiz!</p>
-            <p className="text-rose-400 text-sm font-medium mb-6">
-              Quiz Master — <span className="text-slate-700 font-semibold">Dinesh Veluswamy</span>
+            <h3 className="text-2xl font-bold text-white mb-2">Quiz Event</h3>
+            <p className="text-slate-400 text-sm mb-1">Test your knowledge in our exciting quiz!</p>
+            <p className="text-sm mb-7">
+              <span className="text-slate-500">Quiz Master — </span>
+              <span className="text-violet-300 font-semibold">Dinesh Veluswamy</span>
             </p>
 
-            <motion.button
-              onClick={() => navigate("/login")}
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              className="w-full py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-rose-500 to-pink-500 shadow-md shadow-rose-200/50 hover:shadow-lg hover:shadow-rose-300/50 transition-shadow cursor-pointer"
-            >
-              Enter Quiz App
-            </motion.button>
-          </motion.div>
+            <GlowButton onClick={() => navigate("/login")}>Enter Quiz App</GlowButton>
+          </TiltCard>
         </div>
       </section>
 
       {/* ── DIVIDER ── */}
       <div className="relative z-10 flex items-center justify-center py-4">
-        <div className="h-px w-20 bg-gradient-to-r from-transparent to-rose-200" />
-        <VenusSymbol className="mx-3 w-5 h-5 text-rose-300" />
-        <div className="h-px w-20 bg-gradient-to-l from-transparent to-rose-200" />
+        <motion.div className="h-px w-24" animate={{ scaleX: [0.5, 1, 0.5], opacity: [0.3, 0.8, 0.3] }} transition={{ duration: 3, repeat: Infinity }}
+          style={{ background: "linear-gradient(90deg, transparent, rgba(168,85,247,0.5))" }}
+        />
+        <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }}>
+          <VenusSymbol className="mx-4 w-5 h-5 text-pink-400/30" />
+        </motion.div>
+        <motion.div className="h-px w-24" animate={{ scaleX: [0.5, 1, 0.5], opacity: [0.3, 0.8, 0.3] }} transition={{ duration: 3, repeat: Infinity, delay: 1.5 }}
+          style={{ background: "linear-gradient(270deg, transparent, rgba(168,85,247,0.5))" }}
+        />
       </div>
 
       {/* ── INSPIRATIONAL QUOTE ── */}
-      <section className="relative z-10 px-6 py-16">
+      <section className="relative z-10 px-6 py-20">
         <motion.blockquote
-          initial={{ opacity: 0, scale: 0.95 }}
-          whileInView={{ opacity: 1, scale: 1 }}
+          initial={{ opacity: 0, scale: 0.9, y: 30 }}
+          whileInView={{ opacity: 1, scale: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ duration: 0.8 }}
           className="max-w-xl mx-auto text-center"
         >
-          <div className="flex justify-center gap-2 mb-4">
-            <span className="text-rose-300/50 text-2xl">✿</span>
-            <VenusSymbol className="w-6 h-6 text-rose-400/40" />
-            <span className="text-rose-300/50 text-2xl">✿</span>
+          <div className="flex justify-center gap-3 mb-5">
+            {[0, 0.8, 1.6].map((d, i) => (
+              <motion.span
+                key={i}
+                animate={{ scale: [1, 1.3, 1], rotate: [0, 20, 0] }}
+                transition={{ duration: 3, repeat: Infinity, delay: d }}
+                className="text-pink-500/30 text-2xl"
+              >
+                {i === 1 ? <VenusSymbol className="w-6 h-6 text-violet-400/30" /> : "✿"}
+              </motion.span>
+            ))}
           </div>
-          <p className="text-xl sm:text-2xl font-medium text-slate-600 italic leading-relaxed">
+
+          <motion.p
+            className="text-xl sm:text-2xl font-medium text-slate-300 italic leading-relaxed"
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 1.5, delay: 0.3 }}
+          >
             &ldquo;There is no limit to what we, as women, can accomplish.&rdquo;
-          </p>
-          <p className="mt-3 text-sm font-semibold text-rose-400">— Michelle Obama</p>
-          <div className="mt-4 mx-auto h-0.5 w-12 rounded-full bg-gradient-to-r from-rose-300 to-pink-300" />
+          </motion.p>
+          <motion.p
+            className="mt-4 text-sm font-semibold bg-gradient-to-r from-pink-400 to-violet-400 bg-clip-text text-transparent"
+            initial={{ opacity: 0, x: -20 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.8 }}
+          >
+            — Michelle Obama
+          </motion.p>
+          <div className="mt-5 mx-auto h-px w-16 bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
         </motion.blockquote>
       </section>
 
-      {/* ── CREDITS (NPM Install) ── */}
-      <footer className="relative z-10 px-6 py-20">
-        <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }} className="text-center mb-10">
-          <h2 className="text-2xl font-bold text-slate-700">Behind the Scenes</h2>
-          <p className="mt-1 text-sm text-slate-400">The developers behind this project</p>
+      {/* ── CREDITS ── */}
+      <footer className="relative z-10 px-6 py-24">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+          className="text-center mb-12"
+        >
+          <h2 className="text-2xl font-bold text-white">Behind the Scenes</h2>
+          <p className="mt-2 text-sm text-slate-500">The developers behind this project</p>
         </motion.div>
 
         <NpmInstallCredits />
 
-        <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} transition={{ duration: 1, delay: 0.5 }} className="mt-14 text-center space-y-1">
-          <p className="text-xs text-slate-400">&copy; 2026 QFactor — PSG College of Technology</p>
-          <p className="text-xs text-rose-300">Happy International Women&apos;s Day ✿</p>
+        <motion.div
+          initial={{ opacity: 0 }}
+          whileInView={{ opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 1, delay: 0.5 }}
+          className="mt-16 text-center space-y-2"
+        >
+          <p className="text-xs text-slate-600">&copy; 2026 QFactor — PSG College of Technology</p>
+          <p className="text-xs bg-gradient-to-r from-pink-400 to-violet-400 bg-clip-text text-transparent font-medium">
+            Happy International Women&apos;s Day ✿
+          </p>
         </motion.div>
       </footer>
+
+      {/* Custom CSS */}
+      <style>{`
+        @keyframes gradient-shift {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        .landing-gradient-text {
+          background: linear-gradient(90deg, #f472b6, #a78bfa, #22d3ee, #f472b6);
+          background-size: 300% auto;
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+          animation: gradient-shift 4s ease infinite;
+        }
+      `}</style>
     </div>
   );
 }
