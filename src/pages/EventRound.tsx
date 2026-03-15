@@ -338,7 +338,7 @@ export default function EventRound() {
         setShortcutsOpen((v) => !v);
       } else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
-        setLeaderboardOpen((v) => !v);
+setLeaderboardOpen((v) => !v);
       } else if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
         setQuestionPanelOpen((v) => !v);
@@ -693,7 +693,7 @@ export default function EventRound() {
             >
               <Hash className="h-4 w-4 text-violet-400" />
               <span className="text-sm font-medium text-slate-400">Question</span>
-              <span className="text-xl font-bold text-violet-300">{event.current_question}</span>
+              <span className="text-xl font-bold text-violet-300">{(currentRound&&(event.current_question>currentRound?.question_count))?(event.current_question-1):(event.current_question)}</span>
               {currentRound && (
                 <span className="text-xs text-slate-500">/ {currentRound.question_count}</span>
               )}
@@ -878,7 +878,7 @@ export default function EventRound() {
                     {/* Team info */}
                     <div className="min-w-0 flex-1">
                       <h3 className="text-base font-bold text-white truncate">{team.name}</h3>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{team.lead}</p>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{team.lead}</p>
                     </div>
 
                     {/* Scores */}
@@ -894,7 +894,7 @@ export default function EventRound() {
                       </motion.div>
                       <div className="flex items-center gap-1">
                         <span className="text-xs font-semibold text-violet-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
-                        <span className="text-[10px] text-slate-600">this round</span>
+                        <span className="text-[10px] text-slate-300">this round</span>
                       </div>
                     </div>
                   </div>
