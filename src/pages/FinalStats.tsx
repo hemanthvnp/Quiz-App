@@ -19,6 +19,7 @@ interface Round {
   round_name: string;
   round_number: number;
   event_id: string;
+  question_count: number;
 }
 
 interface Team {
@@ -53,6 +54,7 @@ export default function FinalStats() {
   const [marking, setMarking] = useState(false);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [restarting, setRestarting] = useState(false);
+  const [startingTiebreaker, setStartingTiebreaker] = useState(false);
   const confettiFired = useRef(false);
 
   useEffect(() => {
@@ -103,8 +105,16 @@ export default function FinalStats() {
           roundScores: teamRoundScores.get(teamId) || {},
           rank: 0,
         }))
-        .sort((a, b) => b.totalScore - a.totalScore)
-        .map((entry, idx) => ({ ...entry, rank: idx + 1 }));
+        .sort((a, b) => b.totalScore - a.totalScore);
+
+      // Tie-aware ranking: teams with equal scores share the same rank
+      let currentRank = 1;
+      sorted.forEach((entry, idx) => {
+        if (idx > 0 && entry.totalScore < sorted[idx - 1].totalScore) {
+          currentRank = idx + 1;
+        }
+        entry.rank = currentRank;
+      });
 
       setLeaderboard(sorted);
       setLoading(false);
@@ -127,6 +137,28 @@ export default function FinalStats() {
     await supabase.from('events').update({ status: 'active' }).eq('id', eventId);
     setEvent((prev) => (prev ? { ...prev, status: 'active' } : prev));
     setMarking(false);
+  };
+
+  const handleStartTiebreaker = async () => {
+    if (!eventId || startingTiebreaker || rounds.length === 0) return;
+    setStartingTiebreaker(true);
+    try {
+      const lastRound = rounds[rounds.length - 1];
+
+      // Reopen last round
+      await supabase.from('rounds').update({ status: 'active' }).eq('id', lastRound.id);
+
+      // Reactivate event, point to last round, set question beyond count so tiebreaker triggers
+      await supabase.from('events').update({
+        status: 'active',
+        current_round_id: lastRound.id,
+        current_question: lastRound.question_count + 1,
+      }).eq('id', eventId);
+
+      navigate(`/events/${eventId}/rounds`);
+    } catch {
+      setStartingTiebreaker(false);
+    }
   };
 
   const handleRestartEvent = async () => {
@@ -189,6 +221,9 @@ export default function FinalStats() {
 
   const winner = leaderboard.length > 0 ? leaderboard[0] : null;
 
+  // Detect if there are ties in top 3 positions
+  const hasTies = leaderboard.length > 1 && leaderboard.some((e, i) => i > 0 && e.rank <= 3 && e.rank === leaderboard[i - 1].rank);
+
   if (loading) return <LoadingScreen message="Calculating final results..." />;
 
   return (
@@ -197,7 +232,7 @@ export default function FinalStats() {
         <AppHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Trophy className="w-6 h-6 text-violet-400" />
+              <Trophy className="w-6 h-6 text-cyan-400" />
               <div>
                 <h1 className="text-lg font-bold">Final Results</h1>
                 {event && <p className="text-sm text-slate-400">{event.name}</p>}
@@ -314,7 +349,7 @@ export default function FinalStats() {
             transition={{ delay: 0.6 }}
           >
             <div className="flex items-center gap-3 mb-6">
-              <Trophy className="w-5 h-5 text-violet-400" />
+              <Trophy className="w-5 h-5 text-cyan-400" />
               <h3 className="text-base font-semibold text-slate-300 uppercase tracking-wider">
                 Final Rankings
               </h3>
@@ -339,6 +374,32 @@ export default function FinalStats() {
             </div>
           </motion.section>
 
+          {/* Tiebreaker Notice */}
+          {hasTies && event && event.status !== 'completed' && (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 1 }}
+              className="flex items-center justify-between rounded-2xl border border-amber-500/20 bg-amber-500/5 px-6 py-4"
+            >
+              <div className="flex items-center gap-3">
+                <AlertTriangle className="w-5 h-5 text-amber-400 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-semibold text-amber-300">Tie Detected</p>
+                  <p className="text-xs text-amber-400/60">Some teams share the same score. Start a tiebreaker to resolve it.</p>
+                </div>
+              </div>
+              <button
+                onClick={handleStartTiebreaker}
+                disabled={startingTiebreaker}
+                className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-5 py-2.5 text-sm font-semibold text-amber-300 hover:bg-amber-500/20 transition-colors disabled:opacity-50"
+              >
+                {startingTiebreaker ? 'Opening...' : 'Start Tiebreaker'}
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </motion.div>
+          )}
+
           {/* Round-wise stats links */}
           {rounds.length > 0 && (
             <motion.section
@@ -347,7 +408,7 @@ export default function FinalStats() {
               transition={{ delay: 1.2 }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <BarChart3 className="w-5 h-5 text-violet-400" />
+                <BarChart3 className="w-5 h-5 text-cyan-400" />
                 <h3 className="text-base font-semibold text-slate-300 uppercase tracking-wider">
                   Round Details
                 </h3>
@@ -380,7 +441,7 @@ export default function FinalStats() {
           >
             <button
               onClick={() => navigate('/events')}
-              className="px-8 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors flex items-center gap-2 text-lg"
+              className="px-8 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-2 text-lg"
             >
               <ArrowLeft className="w-5 h-5" />
               Back to Events

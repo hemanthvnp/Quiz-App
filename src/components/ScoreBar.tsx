@@ -15,7 +15,7 @@ function getBarGradient(rank: number) {
     case 1: return 'linear-gradient(90deg, #eab308, #f59e0b)';
     case 2: return 'linear-gradient(90deg, #9ca3af, #d1d5db)';
     case 3: return 'linear-gradient(90deg, #b45309, #d97706)';
-    default: return 'linear-gradient(90deg, rgba(124,58,237,0.5), rgba(139,92,246,0.5))';
+    default: return 'linear-gradient(90deg, rgba(6,182,212,0.5), rgba(34,211,238,0.5))';
   }
 }
 
@@ -24,7 +24,7 @@ function getRankBadge(rank: number) {
     case 1: return 'bg-yellow-500/20 text-yellow-400 ring-2 ring-yellow-500/40';
     case 2: return 'bg-gray-300/20 text-gray-300 ring-2 ring-gray-400/40';
     case 3: return 'bg-amber-700/20 text-amber-500 ring-2 ring-amber-600/40';
-    default: return 'bg-violet-500/10 text-violet-400/60';
+    default: return 'bg-cyan-500/10 text-cyan-400/60';
   }
 }
 
@@ -33,7 +33,7 @@ function getSparklineColor(rank: number) {
     case 1: return '#facc15';
     case 2: return '#d1d5db';
     case 3: return '#d97706';
-    default: return '#a78bfa';
+    default: return '#22d3ee';
   }
 }
 
