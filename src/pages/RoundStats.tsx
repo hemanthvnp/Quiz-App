@@ -61,7 +61,7 @@ const actionMeta: Record<string, { icon: typeof Zap; color: string; label: strin
   pounce_minus: { icon: Minus, color: 'text-red-400', label: 'Pounce−' },
   buzzer: { icon: Award, color: 'text-amber-400', label: 'Buzzer' },
   buzzer_minus: { icon: AlertCircle, color: 'text-orange-400', label: 'Buzz−' },
-  bonus: { icon: Gift, color: 'text-violet-400', label: 'Bonus' },
+  bonus: { icon: Gift, color: 'text-cyan-400', label: 'Bonus' },
 };
 
 export default function RoundStats() {
@@ -209,7 +209,7 @@ export default function RoundStats() {
             {nextRoundId && (
               <button
                 onClick={() => navigate(`/events/${eventId}/rounds/${nextRoundId}/stats`)}
-                className="px-4 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-sm font-medium text-white transition-colors flex items-center gap-2"
+                className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm font-medium text-white transition-colors flex items-center gap-2"
               >
                 Next Round
                 <ChevronRight className="w-4 h-4" />
@@ -229,7 +229,7 @@ export default function RoundStats() {
             transition={{ duration: 0.5 }}
           >
             <div className="flex items-center gap-3 mb-4">
-              <BarChart3 className="w-5 h-5 text-violet-400" />
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
               <h2 className="text-base font-semibold text-slate-300 uppercase tracking-wider">Round Rankings</h2>
             </div>
             <div className="space-y-2">
@@ -288,7 +288,7 @@ export default function RoundStats() {
           transition={{ duration: 0.5, delay: 0.2 }}
         >
           <div className="flex items-center gap-3 mb-4">
-            <Hash className="w-5 h-5 text-violet-400" />
+            <Hash className="w-5 h-5 text-cyan-400" />
             <h2 className="text-base font-semibold text-slate-300 uppercase tracking-wider">Question Results</h2>
           </div>
           <div className="space-y-3">
@@ -302,7 +302,7 @@ export default function RoundStats() {
                   className="rounded-2xl border border-white/[0.06] bg-white/[0.02] overflow-hidden"
                 >
                   <div className="flex items-center gap-4 px-5 py-3 border-b border-white/[0.04]">
-                    <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-violet-500/10 text-violet-400 font-bold text-sm">
+                    <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-cyan-500/10 text-cyan-400 font-bold text-sm">
                       Q{qd.questionNumber}
                     </div>
                     {qd.winnerName && (
@@ -383,7 +383,7 @@ export default function RoundStats() {
             {nextRoundId && (
               <button
                 onClick={() => navigate(`/events/${eventId}/rounds/${nextRoundId}/stats`)}
-                className="px-6 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors flex items-center gap-2"
+                className="px-6 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-2"
               >
                 Next Round
                 <ChevronRight className="w-4 h-4" />

@@ -16,10 +16,10 @@ function Meteor({ delay }: { delay: number }) {
       animate={{ opacity: [0, 1, 1, 0], scaleY: [0, 1, 1, 1], y: [0, 0, 300, 600], x: [0, 0, -150, -300] }}
       transition={{ duration: 1.5, delay, repeat: Infinity, repeatDelay: 8 + Math.random() * 12, ease: "easeIn" }}
     >
-      <div className="w-full h-full bg-gradient-to-b from-white via-violet-300 to-transparent rounded-full" />
+      <div className="w-full h-full bg-gradient-to-b from-white via-cyan-300 to-transparent rounded-full" />
       <div
         className="absolute top-0 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-white"
-        style={{ boxShadow: "0 0 6px 3px rgba(255,255,255,0.8), 0 0 20px 6px rgba(167,139,250,0.4)" }}
+        style={{ boxShadow: "0 0 6px 3px rgba(255,255,255,0.8), 0 0 20px 6px rgba(6,182,212,0.4)" }}
       />
     </motion.div>
   );
@@ -41,7 +41,7 @@ function Aurora() {
             top: `${10 + i * 15}%`,
             left: "-25%",
             background: `linear-gradient(90deg, transparent, ${
-              i === 0 ? "rgba(139,92,246,0.3)" : i === 1 ? "rgba(236,72,153,0.2)" : "rgba(59,130,246,0.15)"
+              i === 0 ? "rgba(6,182,212,0.3)" : i === 1 ? "rgba(244,63,94,0.2)" : "rgba(59,130,246,0.15)"
             }, transparent)`,
             filter: "blur(60px)",
             borderRadius: "50%",
@@ -170,7 +170,7 @@ function Typewriter({ text, delay = 0, className }: { text: string; delay?: numb
         <motion.span
           animate={{ opacity: [1, 0] }}
           transition={{ duration: 0.5, repeat: Infinity, repeatType: "reverse" }}
-          className="inline-block w-[2px] h-[1em] bg-violet-400 ml-0.5 align-middle"
+          className="inline-block w-[2px] h-[1em] bg-cyan-400 ml-0.5 align-middle"
         />
       )}
     </span>
@@ -239,7 +239,7 @@ function RingPulse() {
       {[0, 1, 2].map((i) => (
         <motion.div
           key={i}
-          className="absolute rounded-full border border-violet-500/20"
+          className="absolute rounded-full border border-cyan-500/20"
           style={{ width: 300 + i * 80, height: 300 + i * 80 }}
           animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.08, 0.3] }}
           transition={{ duration: 4, delay: i * 1.2, repeat: Infinity, ease: "easeInOut" }}
@@ -275,7 +275,7 @@ function NpmInstallCredits() {
       onViewportEnter={() => setStep(0)}
       className="w-full max-w-lg mx-auto"
     >
-      <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] bg-slate-900/80 backdrop-blur-xl shadow-2xl shadow-violet-500/5 font-mono text-sm">
+      <div className="relative rounded-2xl overflow-hidden border border-white/[0.08] bg-slate-900/80 backdrop-blur-xl shadow-2xl shadow-cyan-500/5 font-mono text-sm">
         {/* Terminal title bar */}
         <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-950/60 border-b border-white/[0.06]">
           <div className="flex gap-1.5">
@@ -290,7 +290,7 @@ function NpmInstallCredits() {
           <div className="flex items-center gap-2">
             <span className="text-emerald-400">$</span>
             <span className="text-slate-300">npm install</span>
-            <span className="text-violet-400">qfactor-team</span>
+            <span className="text-cyan-400">qfactor-team</span>
           </div>
 
           {packages.map((p, idx) => (
@@ -310,7 +310,7 @@ function NpmInstallCredits() {
                 <div className="ml-4 flex items-center gap-3">
                   <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-violet-500 to-pink-500"
+                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-pink-500"
                       initial={{ width: "0%" }}
                       animate={step > idx ? { width: "100%" } : {}}
                       transition={{ duration: 0.8, delay: 0.1 }}
@@ -402,7 +402,7 @@ function FlipDigit({ value }: { value: number }) {
           animate={{ y: 0, opacity: 1, rotateX: 0 }}
           exit={{ y: 60, opacity: 0, rotateX: 90 }}
           transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute inset-0 flex items-center justify-center text-2xl sm:text-4xl font-bold bg-gradient-to-b from-white to-violet-200 bg-clip-text text-transparent tabular-nums"
+          className="absolute inset-0 flex items-center justify-center text-2xl sm:text-4xl font-bold bg-gradient-to-b from-white to-cyan-200 bg-clip-text text-transparent tabular-nums"
           style={{ transformPerspective: 200 }}
         >
           {String(value).padStart(2, "0")}
@@ -415,7 +415,7 @@ function FlipDigit({ value }: { value: number }) {
 function CountdownUnit({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex flex-col items-center">
-      <div className="relative rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-violet-500/10 overflow-hidden">
+      <div className="relative rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-cyan-500/10 overflow-hidden">
         {/* Shine strip */}
         <motion.div
           className="absolute inset-0 pointer-events-none"
@@ -457,12 +457,12 @@ function GlowButton({ children, onClick }: { children: React.ReactNode; onClick:
       {/* Animated gradient border */}
       <motion.div
         className="absolute inset-0 rounded-xl p-[2px]"
-        style={{ background: "conic-gradient(from 0deg, #7c3aed, #ec4899, #3b82f6, #7c3aed)" }}
+        style={{ background: "conic-gradient(from 0deg, #06b6d4, #f43f5e, #3b82f6, #06b6d4)" }}
         animate={{ rotate: [0, 360] }}
         transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
       />
       {/* Inner fill */}
-      <div className="absolute inset-[2px] rounded-[10px] bg-gradient-to-r from-violet-600 via-purple-600 to-pink-600" />
+      <div className="absolute inset-[2px] rounded-[10px] bg-gradient-to-r from-cyan-600 via-cyan-500 to-rose-600" />
       {/* Running shimmer */}
       <motion.div
         className="absolute inset-[2px] rounded-[10px] pointer-events-none"
@@ -512,9 +512,9 @@ export default function LandingPage() {
   };
 
   return (
-    <div ref={ref} className="relative min-h-screen w-full overflow-x-hidden bg-slate-950 text-white" onMouseMove={handleMouseMove}>
+    <div ref={ref} className="relative min-h-screen w-full overflow-x-hidden bg-[#0a0a0f] text-white" onMouseMove={handleMouseMove}>
       {/* ── BACKGROUND LAYERS ── */}
-      <div className="fixed inset-0 bg-gradient-to-b from-slate-950 via-[#0c1222] to-slate-950" />
+      <div className="fixed inset-0 bg-gradient-to-b from-[#0a0a0f] via-[#0c1222] to-[#0a0a0f]" />
 
       {/* Aurora */}
       <div className="fixed inset-0 pointer-events-none">
@@ -569,7 +569,7 @@ export default function LandingPage() {
           {/* Badge */}
           <motion.div
             variants={fadeUp}
-            className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/[0.05] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-violet-500/5"
+            className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/[0.05] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-cyan-500/5"
           >
             <motion.span animate={{ rotate: [0, 360] }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} className="text-pink-400 text-sm">
               ✿
@@ -617,7 +617,7 @@ export default function LandingPage() {
             className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-md"
           >
             <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-              <svg className="w-4 h-4 text-violet-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </motion.div>
@@ -630,22 +630,22 @@ export default function LandingPage() {
             {countdown.ended ? (
               <motion.div
                 animate={{
-                  boxShadow: ["0 0 30px rgba(139,92,246,0.3)", "0 0 80px rgba(139,92,246,0.5)", "0 0 30px rgba(139,92,246,0.3)"],
+                  boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 80px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"],
                   scale: [1, 1.03, 1],
                 }}
                 transition={{ duration: 2, repeat: Infinity }}
-                className="px-10 py-5 rounded-2xl bg-gradient-to-r from-violet-600 to-pink-600 text-white font-bold text-2xl shadow-2xl"
+                className="px-10 py-5 rounded-2xl bg-gradient-to-r from-cyan-600 to-pink-600 text-white font-bold text-2xl shadow-2xl"
               >
                 Event is Live!
               </motion.div>
             ) : (
               <div className="flex items-center gap-2 sm:gap-3">
                 <CountdownUnit value={countdown.days} label="Days" />
-                <span className="text-2xl font-bold text-violet-400/30 mt-[-20px]">:</span>
+                <span className="text-2xl font-bold text-cyan-400/30 mt-[-20px]">:</span>
                 <CountdownUnit value={countdown.hours} label="Hours" />
-                <span className="text-2xl font-bold text-violet-400/30 mt-[-20px]">:</span>
+                <span className="text-2xl font-bold text-cyan-400/30 mt-[-20px]">:</span>
                 <CountdownUnit value={countdown.minutes} label="Mins" />
-                <span className="text-2xl font-bold text-violet-400/30 mt-[-20px]">:</span>
+                <span className="text-2xl font-bold text-cyan-400/30 mt-[-20px]">:</span>
                 <CountdownUnit value={countdown.seconds} label="Secs" />
               </div>
             )}
@@ -657,7 +657,7 @@ export default function LandingPage() {
               <span className="text-[10px] text-slate-600 uppercase tracking-[0.25em]">Scroll</span>
               <div className="w-5 h-8 rounded-full border border-slate-700 flex items-start justify-center p-1">
                 <motion.div
-                  className="w-1 h-2 rounded-full bg-violet-400"
+                  className="w-1 h-2 rounded-full bg-cyan-400"
                   animate={{ y: [0, 10, 0], opacity: [1, 0.3, 1] }}
                   transition={{ duration: 2, repeat: Infinity }}
                 />
@@ -683,17 +683,17 @@ export default function LandingPage() {
           className="text-center mb-16"
         >
           <h2 className="text-3xl sm:text-4xl font-bold text-white">Featured Event</h2>
-          <div className="mt-4 mx-auto h-1 w-16 rounded-full bg-gradient-to-r from-violet-500 to-pink-500" />
+          <div className="mt-4 mx-auto h-1 w-16 rounded-full bg-gradient-to-r from-cyan-500 to-pink-500" />
         </motion.div>
 
         <div className="max-w-md mx-auto" style={{ perspective: 800 }}>
-          <TiltCard className="group relative rounded-3xl bg-white/[0.04] backdrop-blur-xl border border-white/[0.08] p-8 shadow-2xl shadow-violet-500/5 transition-colors hover:border-violet-500/20">
+          <TiltCard className="group relative rounded-3xl bg-white/[0.04] backdrop-blur-xl border border-white/[0.08] p-8 shadow-2xl shadow-cyan-500/5 transition-colors hover:border-cyan-500/20">
             {/* Top gradient bar */}
-            <div className="absolute top-0 left-8 right-8 h-px rounded-b-full bg-gradient-to-r from-transparent via-violet-500 to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
+            <div className="absolute top-0 left-8 right-8 h-px rounded-b-full bg-gradient-to-r from-transparent via-cyan-500 to-transparent opacity-60 group-hover:opacity-100 transition-opacity" />
 
             {/* Animated icon */}
             <motion.div
-              className="mb-5 inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-violet-500/10 border border-violet-500/20 text-violet-400"
+              className="mb-5 inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-cyan-500/10 border border-cyan-500/20 text-cyan-400"
               animate={{ rotate: [0, 5, -5, 0] }}
               transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
             >
@@ -715,7 +715,7 @@ export default function LandingPage() {
             <p className="text-slate-400 text-sm mb-1">Test your knowledge in our exciting quiz!</p>
             <p className="text-sm mb-7">
               <span className="text-slate-500">Quiz Master — </span>
-              <span className="text-violet-300 font-semibold">Dinesh Veluswamy</span>
+              <span className="text-cyan-300 font-semibold">Dinesh Veluswamy</span>
             </p>
 
             <GlowButton onClick={() => navigate("/login")}>Enter Quiz App</GlowButton>
@@ -753,7 +753,7 @@ export default function LandingPage() {
                 transition={{ duration: 3, repeat: Infinity, delay: d }}
                 className="text-pink-500/30 text-2xl"
               >
-                {i === 1 ? <VenusSymbol className="w-6 h-6 text-violet-400/30" /> : "✿"}
+                {i === 1 ? <VenusSymbol className="w-6 h-6 text-cyan-400/30" /> : "✿"}
               </motion.span>
             ))}
           </div>
@@ -768,7 +768,7 @@ export default function LandingPage() {
             &ldquo;There is no limit to what we, as women, can accomplish.&rdquo;
           </motion.p>
           <motion.p
-            className="mt-4 text-sm font-semibold bg-gradient-to-r from-pink-400 to-violet-400 bg-clip-text text-transparent"
+            className="mt-4 text-sm font-semibold bg-gradient-to-r from-pink-400 to-cyan-400 bg-clip-text text-transparent"
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
@@ -776,7 +776,7 @@ export default function LandingPage() {
           >
             — Michelle Obama
           </motion.p>
-          <div className="mt-5 mx-auto h-px w-16 bg-gradient-to-r from-transparent via-violet-500/40 to-transparent" />
+          <div className="mt-5 mx-auto h-px w-16 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
         </motion.blockquote>
       </section>
 
@@ -803,7 +803,7 @@ export default function LandingPage() {
           className="mt-16 text-center space-y-2"
         >
           <p className="text-xs text-slate-600">&copy; 2026 QFactor — PSG College of Technology</p>
-          <p className="text-xs bg-gradient-to-r from-pink-400 to-violet-400 bg-clip-text text-transparent font-medium">
+          <p className="text-xs bg-gradient-to-r from-pink-400 to-cyan-400 bg-clip-text text-transparent font-medium">
             Happy International Women&apos;s Day ✿
           </p>
         </motion.div>
@@ -816,7 +816,7 @@ export default function LandingPage() {
           50% { background-position: 100% 50%; }
         }
         .landing-gradient-text {
-          background: linear-gradient(90deg, #f472b6, #a78bfa, #22d3ee, #f472b6);
+          background: linear-gradient(90deg, #06b6d4, #f43f5e, #22d3ee, #06b6d4);
           background-size: 300% auto;
           -webkit-background-clip: text;
           -webkit-text-fill-color: transparent;

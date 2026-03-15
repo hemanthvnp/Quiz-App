@@ -236,7 +236,7 @@ export default function LiveLeaderboard() {
         particleCount: 150,
         spread: 120,
         origin: { y: 0.5 },
-        colors: ['#ffd700', '#a78bfa', '#34d399', '#c0c0c0', '#cd7f32'],
+        colors: ['#ffd700', '#22d3ee', '#34d399', '#c0c0c0', '#cd7f32'],
       });
 
       const fireConfetti = () => {
@@ -245,14 +245,14 @@ export default function LiveLeaderboard() {
           angle: 60,
           spread: 55,
           origin: { x: 0, y: 0.65 },
-          colors: ['#ffd700', '#a78bfa', '#34d399', '#c0c0c0', '#cd7f32'],
+          colors: ['#ffd700', '#22d3ee', '#34d399', '#c0c0c0', '#cd7f32'],
         });
         confetti({
           particleCount: 4,
           angle: 120,
           spread: 55,
           origin: { x: 1, y: 0.65 },
-          colors: ['#ffd700', '#a78bfa', '#34d399', '#c0c0c0', '#cd7f32'],
+          colors: ['#ffd700', '#22d3ee', '#34d399', '#c0c0c0', '#cd7f32'],
         });
         if (Date.now() < end) {
           requestAnimationFrame(fireConfetti);
@@ -273,7 +273,7 @@ export default function LiveLeaderboard() {
       case 1: return 'text-yellow-400';
       case 2: return 'text-gray-300';
       case 3: return 'text-amber-500';
-      default: return 'text-violet-400';
+      default: return 'text-cyan-400';
     }
   };
 
@@ -291,7 +291,7 @@ export default function LiveLeaderboard() {
       case 1: return 'bg-yellow-500/20 text-yellow-400 ring-2 ring-yellow-500/40 scale-110';
       case 2: return 'bg-gray-300/20 text-gray-300 ring-2 ring-gray-400/40';
       case 3: return 'bg-amber-700/20 text-amber-500 ring-2 ring-amber-600/40';
-      default: return 'bg-violet-500/10 text-violet-400/60';
+      default: return 'bg-cyan-500/10 text-cyan-400/60';
     }
   };
 
@@ -299,12 +299,12 @@ export default function LiveLeaderboard() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+      <div className="min-h-screen bg-[#0a0a0f] flex items-center justify-center">
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: [0.3, 1, 0.3] }}
           transition={{ duration: 2, repeat: Infinity }}
-          className="flex items-center gap-3 text-violet-400 text-xl"
+          className="flex items-center gap-3 text-cyan-400 text-xl"
         >
           <Monitor className="w-7 h-7" />
           Connecting to live feed...
@@ -321,11 +321,11 @@ export default function LiveLeaderboard() {
           initial={{ opacity: 0, y: -30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl px-8 py-5"
+          className="border-b border-white/[0.06] bg-[#0a0a0f]/80 backdrop-blur-xl px-8 py-5"
         >
           <div className="max-w-6xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-5">
-              <div className="p-3 rounded-xl bg-violet-500/10 border border-violet-500/20">
+              <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
                 <Trophy className="w-7 h-7 text-yellow-400" />
               </div>
               <div>
@@ -372,13 +372,13 @@ export default function LiveLeaderboard() {
               className="overflow-hidden"
             >
               <div className="max-w-6xl mx-auto px-8 pt-4">
-                <div className="flex items-center gap-4 px-6 py-4 rounded-xl bg-violet-500/10 border border-violet-500/20 backdrop-blur-md">
-                  <Zap className="w-6 h-6 text-violet-400 flex-shrink-0" />
+                <div className="flex items-center gap-4 px-6 py-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20 backdrop-blur-md">
+                  <Zap className="w-6 h-6 text-cyan-400 flex-shrink-0" />
                   <span className="text-lg text-white">
                     Question {latestResult.questionNumber}
                   </span>
                   <span className="text-white/40 text-lg">&rarr;</span>
-                  <span className="text-lg font-bold text-violet-300">
+                  <span className="text-lg font-bold text-cyan-300">
                     {latestResult.teamName}
                   </span>
                 </div>
@@ -437,7 +437,7 @@ export default function LiveLeaderboard() {
                       opacity: 1,
                       x: 0,
                       backgroundColor: entry.flashActive
-                        ? 'rgba(139, 92, 246, 0.1)'
+                        ? 'rgba(6, 182, 212, 0.1)'
                         : 'rgba(255, 255, 255, 0)',
                     }}
                     exit={{ opacity: 0, x: 40 }}
@@ -448,7 +448,7 @@ export default function LiveLeaderboard() {
                     }}
                     className={`relative flex items-center gap-6 px-8 py-5 rounded-2xl border backdrop-blur-md transition-shadow ${getRankBg(
                       entry.rank
-                    )} ${entry.flashActive ? 'ring-2 ring-violet-500/40' : ''}`}
+                    )} ${entry.flashActive ? 'ring-2 ring-cyan-500/40' : ''}`}
                   >
                     <div
                       className={`flex items-center justify-center w-14 h-14 rounded-full font-bold text-xl ${getRankBadge(
@@ -508,7 +508,7 @@ export default function LiveLeaderboard() {
                           animate={{ opacity: 0 }}
                           exit={{ opacity: 0 }}
                           transition={{ duration: 1.5 }}
-                          className="absolute inset-0 rounded-2xl bg-violet-500/15 pointer-events-none"
+                          className="absolute inset-0 rounded-2xl bg-cyan-500/15 pointer-events-none"
                         />
                       )}
                     </AnimatePresence>

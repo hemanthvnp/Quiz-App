@@ -66,7 +66,7 @@ type SortKey = 'name' | 'totalScore' | 'roundScore';
 type FilterMode = 'all' | 'top5';
 
 const inputCls =
-  'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-lg font-bold text-white placeholder-slate-500 outline-none transition-all focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/20';
+  'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-lg font-bold text-white placeholder-slate-500 outline-none transition-all focus:border-cyan-500/50 focus:ring-2 focus:ring-cyan-500/20';
 
 // ---------------------------------------------------------------------------
 // Main Component
@@ -795,7 +795,7 @@ export default function EventRound() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-950">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+          <Loader2 className="h-8 w-8 animate-spin text-cyan-500" />
           <p className="text-sm text-slate-400">Loading event...</p>
         </motion.div>
       </div>
@@ -840,7 +840,7 @@ export default function EventRound() {
               <div className="relative" ref={roundDropdownRef}>
                 <button
                   onClick={() => setRoundDropdownOpen((v) => !v)}
-                  className="mt-0.5 flex items-center gap-1.5 text-sm text-violet-400 hover:text-violet-300 transition-colors"
+                  className="mt-0.5 flex items-center gap-1.5 text-sm text-cyan-400 hover:text-cyan-300 transition-colors"
                 >
                   <span>{currentRound?.round_name ?? 'Select Round'}</span>
                   <ChevronDown className={`h-3.5 w-3.5 transition-transform ${roundDropdownOpen ? 'rotate-180' : ''}`} />
@@ -860,7 +860,7 @@ export default function EventRound() {
                           onClick={() => switchRound(r.id)}
                           className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                             r.id === currentRoundId
-                              ? 'bg-violet-500/20 text-violet-300'
+                              ? 'bg-cyan-500/20 text-cyan-300'
                               : 'text-white/70 hover:bg-white/[0.05] hover:text-white'
                           }`}
                         >
@@ -894,14 +894,14 @@ export default function EventRound() {
               className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
                 tiebreakerMode
                   ? 'border-amber-500/20 bg-amber-500/10'
-                  : 'border-violet-500/20 bg-violet-500/10'
+                  : 'border-cyan-500/20 bg-cyan-500/10'
               }`}
             >
-              <Hash className={`h-4 w-4 ${tiebreakerMode ? 'text-amber-400' : 'text-violet-400'}`} />
+              <Hash className={`h-4 w-4 ${tiebreakerMode ? 'text-amber-400' : 'text-cyan-400'}`} />
               <span className="text-sm font-medium text-slate-400">
                 {tiebreakerMode ? 'Tiebreaker Q' : 'Question'}
               </span>
-              <span className={`text-xl font-bold ${tiebreakerMode ? 'text-amber-300' : 'text-violet-300'}`}>
+              <span className={`text-xl font-bold ${tiebreakerMode ? 'text-amber-300' : 'text-cyan-300'}`}>
                 {tiebreakerMode
                   ? event.current_question - (currentRound?.question_count ?? 0)
                   : event.current_question}
@@ -951,7 +951,7 @@ export default function EventRound() {
                   }}
                   className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
                     sortKey === key
-                      ? 'bg-violet-500/20 text-violet-300'
+                      ? 'bg-cyan-500/20 text-cyan-300'
                       : 'text-slate-500 hover:bg-white/[0.05] hover:text-slate-300'
                   }`}
                 >
@@ -965,7 +965,7 @@ export default function EventRound() {
               <button
                 onClick={() => setFilterMode('all')}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  filterMode === 'all' ? 'bg-violet-500/20 text-violet-300' : 'text-slate-500 hover:bg-white/[0.05]'
+                  filterMode === 'all' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:bg-white/[0.05]'
                 }`}
               >
                 All
@@ -973,7 +973,7 @@ export default function EventRound() {
               <button
                 onClick={() => setFilterMode('top5')}
                 className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${
-                  filterMode === 'top5' ? 'bg-violet-500/20 text-violet-300' : 'text-slate-500 hover:bg-white/[0.05]'
+                  filterMode === 'top5' ? 'bg-cyan-500/20 text-cyan-300' : 'text-slate-500 hover:bg-white/[0.05]'
                 }`}
               >
                 Top 5
@@ -1048,7 +1048,7 @@ export default function EventRound() {
                       className="rounded-xl bg-white/[0.03] border border-white/[0.04] overflow-hidden"
                     >
                       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.04]">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-violet-500/20 text-[10px] font-bold text-violet-300">
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
                           {q.questionNumber}
                         </div>
                         {q.winnerTeamName && (
@@ -1075,7 +1075,7 @@ export default function EventRound() {
                                 setEditPoints(String(a.points));
                                 setEditModalOpen(true);
                               }}
-                              className="opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-violet-400 hover:bg-violet-500/10 transition-all"
+                              className="opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
                               title="Edit score"
                             >
                               <Pencil className="w-3 h-3" />
@@ -1117,7 +1117,7 @@ export default function EventRound() {
                 const barGradient = rank === 1 ? 'from-yellow-500 to-amber-500'
                   : rank === 2 ? 'from-gray-300 to-gray-400'
                   : rank === 3 ? 'from-amber-600 to-amber-700'
-                  : 'from-violet-500/60 to-violet-600/40';
+                  : 'from-cyan-500/60 to-cyan-600/40';
 
                 return (
                 <motion.div
@@ -1137,7 +1137,7 @@ export default function EventRound() {
                         animate={{ opacity: 0 }}
                         exit={{ opacity: 0 }}
                         transition={{ duration: 0.8 }}
-                        className="absolute inset-0 rounded-2xl bg-violet-500/25 z-0"
+                        className="absolute inset-0 rounded-2xl bg-cyan-500/25 z-0"
                       />
                     )}
                   </AnimatePresence>
@@ -1167,7 +1167,7 @@ export default function EventRound() {
                         <span className={`text-2xl font-black tabular-nums ${isLeader ? 'text-yellow-400' : 'text-white'}`}>{team.totalScore}</span>
                       </motion.div>
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-violet-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
+                        <span className="text-xs font-semibold text-cyan-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
                         <span className="text-[10px] text-slate-600">this round</span>
                       </div>
                     </div>
@@ -1256,11 +1256,11 @@ export default function EventRound() {
                         setBonusModalOpen(true);
                       }}
                       disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-violet-500/10 border border-violet-500/20 px-2 py-2 text-violet-300 transition-all hover:bg-violet-500/20 hover:shadow-[0_0_12px_-3px_rgba(139,92,246,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 px-2 py-2 text-cyan-300 transition-all hover:bg-cyan-500/20 hover:shadow-[0_0_12px_-3px_rgba(6,182,212,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                       <Gift className="h-4 w-4" />
                       <span className="text-[10px] font-bold uppercase tracking-wider">Bonus</span>
-                      <span className="text-[9px] text-violet-400/50">custom</span>
+                      <span className="text-[9px] text-cyan-400/50">custom</span>
                     </motion.button>
                   </div>
                 </motion.div>
@@ -1332,7 +1332,7 @@ export default function EventRound() {
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         onClick={() => setLeaderboardOpen(true)}
-        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-violet-500/30 bg-violet-600/20 text-violet-300 shadow-lg shadow-violet-500/10 backdrop-blur-xl transition-colors hover:bg-violet-600/30"
+        className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full border border-cyan-500/30 bg-cyan-600/20 text-cyan-300 shadow-lg shadow-cyan-500/10 backdrop-blur-xl transition-colors hover:bg-cyan-600/30"
         title="Rankings (L)"
       >
         <Crown className="h-6 w-6" />
@@ -1388,7 +1388,7 @@ export default function EventRound() {
             >
               <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
                 <div className="flex items-center gap-2">
-                  <Crown className="h-5 w-5 text-violet-400" />
+                  <Crown className="h-5 w-5 text-cyan-400" />
                   <h2 className="text-lg font-bold">Rankings</h2>
                 </div>
                 <button
@@ -1404,7 +1404,7 @@ export default function EventRound() {
                   onClick={() => setLeaderboardTab('overall')}
                   className={`flex-1 py-3 text-sm font-medium transition-colors ${
                     leaderboardTab === 'overall'
-                      ? 'border-b-2 border-violet-500 text-violet-300'
+                      ? 'border-b-2 border-cyan-500 text-cyan-300'
                       : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
@@ -1414,7 +1414,7 @@ export default function EventRound() {
                   onClick={() => setLeaderboardTab('round')}
                   className={`flex-1 py-3 text-sm font-medium transition-colors ${
                     leaderboardTab === 'round'
-                      ? 'border-b-2 border-violet-500 text-violet-300'
+                      ? 'border-b-2 border-cyan-500 text-cyan-300'
                       : 'text-slate-500 hover:text-slate-300'
                   }`}
                 >
@@ -1443,7 +1443,7 @@ export default function EventRound() {
                         transition={{ delay: idx * 0.04 }}
                         className={`flex items-center gap-4 rounded-xl border bg-gradient-to-r px-4 py-3 ${medal}`}
                       >
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/10 text-sm font-black tabular-nums">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-cyan-500/10 text-sm font-black tabular-nums">
                           {idx + 1}
                         </div>
                         <div className="flex-1 min-w-0">
@@ -1490,7 +1490,7 @@ export default function EventRound() {
             >
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Gift className="h-5 w-5 text-violet-400" />
+                  <Gift className="h-5 w-5 text-cyan-400" />
                   <h3 className="text-lg font-bold">Bonus Points</h3>
                 </div>
                 <button
@@ -1532,7 +1532,7 @@ export default function EventRound() {
                   whileTap={{ scale: 0.98 }}
                   onClick={handleBonusSubmit}
                   disabled={!bonusPoints || isNaN(parseInt(bonusPoints))}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Plus className="h-4 w-4" />
                   Award
@@ -1566,7 +1566,7 @@ export default function EventRound() {
             >
               <div className="mb-4 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Pencil className="h-5 w-5 text-violet-400" />
+                  <Pencil className="h-5 w-5 text-cyan-400" />
                   <h3 className="text-lg font-bold">Edit Score</h3>
                 </div>
                 <button
@@ -1610,7 +1610,7 @@ export default function EventRound() {
                   whileTap={{ scale: 0.98 }}
                   onClick={handleEditScore}
                   disabled={!editPoints || isNaN(parseInt(editPoints)) || parseInt(editPoints) === editingScore.currentPoints}
-                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 >
                   <Pencil className="h-4 w-4" />
                   Update
@@ -1635,7 +1635,7 @@ export default function EventRound() {
           >
             <div className="mb-3 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Keyboard className="h-4 w-4 text-violet-400" />
+                <Keyboard className="h-4 w-4 text-cyan-400" />
                 <h3 className="text-sm font-bold text-slate-300">Shortcuts</h3>
               </div>
               <button onClick={() => setShortcutsOpen(false)} className="text-slate-500 hover:text-white transition-colors">

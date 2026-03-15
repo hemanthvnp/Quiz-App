@@ -232,7 +232,7 @@ export default function FinalStats() {
         <AppHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <Trophy className="w-6 h-6 text-violet-400" />
+              <Trophy className="w-6 h-6 text-cyan-400" />
               <div>
                 <h1 className="text-lg font-bold">Final Results</h1>
                 {event && <p className="text-sm text-slate-400">{event.name}</p>}
@@ -349,7 +349,7 @@ export default function FinalStats() {
             transition={{ delay: 0.6 }}
           >
             <div className="flex items-center gap-3 mb-6">
-              <Trophy className="w-5 h-5 text-violet-400" />
+              <Trophy className="w-5 h-5 text-cyan-400" />
               <h3 className="text-base font-semibold text-slate-300 uppercase tracking-wider">
                 Final Rankings
               </h3>
@@ -408,7 +408,7 @@ export default function FinalStats() {
               transition={{ delay: 1.2 }}
             >
               <div className="flex items-center gap-3 mb-4">
-                <BarChart3 className="w-5 h-5 text-violet-400" />
+                <BarChart3 className="w-5 h-5 text-cyan-400" />
                 <h3 className="text-base font-semibold text-slate-300 uppercase tracking-wider">
                   Round Details
                 </h3>
@@ -441,7 +441,7 @@ export default function FinalStats() {
           >
             <button
               onClick={() => navigate('/events')}
-              className="px-8 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-medium transition-colors flex items-center gap-2 text-lg"
+              className="px-8 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-2 text-lg"
             >
               <ArrowLeft className="w-5 h-5" />
               Back to Events

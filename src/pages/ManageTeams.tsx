@@ -27,7 +27,7 @@ const card = {
 };
 
 const inputCls =
-  'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-violet-500/50 focus:ring-1 focus:ring-violet-500/30';
+  'w-full rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-cyan-500/50 focus:ring-1 focus:ring-cyan-500/30';
 const inputErrCls =
   'w-full rounded-xl border border-red-500/40 bg-red-500/5 px-4 py-2.5 text-sm text-white placeholder-slate-500 outline-none transition-all focus:border-red-500/50 focus:ring-1 focus:ring-red-500/30';
 const errText = 'mt-1 text-[11px] text-red-400';
@@ -194,7 +194,7 @@ export default function ManageTeams() {
             whileHover={{ scale: 1.02 }}
             whileTap={{ scale: 0.98 }}
             onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
+            className="flex items-center gap-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-sm font-medium transition-colors cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Add Team
           </motion.button>
@@ -211,7 +211,7 @@ export default function ManageTeams() {
             <p className="text-sm text-slate-400 mb-5">Add your first team to get started</p>
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 rounded-xl bg-violet-600 hover:bg-violet-500 px-5 py-2.5 text-sm font-medium transition-colors"
+              className="flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 px-5 py-2.5 text-sm font-medium transition-colors"
             >
               <Plus className="w-4 h-4" /> Add Team
             </button>
@@ -238,8 +238,8 @@ export default function ManageTeams() {
                   {/* Card Header */}
                   <div className="flex items-center justify-between gap-4 px-5 py-4">
                     <div className="flex flex-1 items-center gap-4 min-w-0">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10">
-                        <Users className="h-5 w-5 text-violet-400" />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-500/10">
+                        <Users className="h-5 w-5 text-cyan-400" />
                       </div>
 
                       {isEditing ? (
@@ -262,7 +262,7 @@ export default function ManageTeams() {
                           />
                           <button
                             onClick={() => handleUpdateTeam(team.id)}
-                            className="rounded-lg bg-violet-600 hover:bg-violet-500 px-4 py-2 text-xs font-medium text-white cursor-pointer transition-colors"
+                            className="rounded-lg bg-cyan-600 hover:bg-cyan-500 px-4 py-2 text-xs font-medium text-white cursor-pointer transition-colors"
                           >
                             Save
                           </button>
@@ -410,7 +410,7 @@ export default function ManageTeams() {
                               whileTap={{ scale: 0.98 }}
                               onClick={() => handleAddParticipant(team.id)}
                               disabled={!form.name.trim()}
-                              className="flex items-center justify-center gap-2 self-start rounded-lg bg-violet-600/20 border border-violet-500/20 px-5 py-2 text-xs font-medium text-violet-300 transition-all hover:bg-violet-600/30 disabled:opacity-40 cursor-pointer"
+                              className="flex items-center justify-center gap-2 self-start rounded-lg bg-cyan-600/20 border border-cyan-500/20 px-5 py-2 text-xs font-medium text-cyan-300 transition-all hover:bg-cyan-600/30 disabled:opacity-40 cursor-pointer"
                             >
                               <UserPlus className="h-3.5 w-3.5" />
                               Add Member
@@ -453,7 +453,7 @@ export default function ManageTeams() {
             >
               <div className="flex items-center justify-between mb-6">
                 <h2 className="flex items-center gap-2 text-lg font-bold text-white">
-                  <Plus className="h-5 w-5 text-violet-400" />
+                  <Plus className="h-5 w-5 text-cyan-400" />
                   Add Team
                 </h2>
                 <button
@@ -504,7 +504,7 @@ export default function ManageTeams() {
                   whileTap={{ scale: 0.98 }}
                   onClick={handleAddTeam}
                   disabled={!newTeamName.trim() || addingTeam}
-                  className="rounded-lg bg-violet-600 hover:bg-violet-500 px-5 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-40 cursor-pointer"
+                  className="rounded-lg bg-cyan-600 hover:bg-cyan-500 px-5 py-2.5 text-sm font-medium text-white transition-colors disabled:opacity-40 cursor-pointer"
                 >
                   {addingTeam ? 'Adding...' : 'Add Team'}
                 </motion.button>
