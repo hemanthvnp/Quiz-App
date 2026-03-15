@@ -24,15 +24,15 @@ function Petal({ delay, x }: { delay: number; x: string }) {
       }}
     >
       <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-        <ellipse cx="8" cy="8" rx="4" ry="8" />
+        <ellipse cx="9" cy="9" rx="4" ry="8" />
       </svg>
     </motion.div>
   );
 }
 
-const petals = Array.from({ length: 18 }, (_, i) => ({
+const petals = Array.from({ length: 20 }, (_, i) => ({
   id: i,
-  delay: Math.random() * 8,
+  delay: Math.random() * 6,
   x: `${Math.random() * 100}%`,
 }));
 
@@ -388,16 +388,16 @@ export default function LandingPage() {
             whileHover={{ y: -4 }}
             className="group relative rounded-3xl bg-white/70 backdrop-blur-lg border border-rose-100 p-8 shadow-lg shadow-rose-100/40 transition-shadow hover:shadow-xl hover:shadow-rose-200/40"
           >
-            <div className="absolute top-0 left-8 right-8 h-1 rounded-b-full bg-gradient-to-r from-rose-400 via-pink-400 to-amber-400" />
-
+            <div className="absolute top-0 left-8 right-8 h-1 rounded-b-full bg-linear-to-r from-rose-400 via-pink-400 to-amber-400" />
+           
             <div className="mb-5 inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-rose-50 text-rose-500">
               <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
             </div>
-
-            <span className="inline-block px-3 py-1 mb-3 rounded-full bg-rose-50 text-rose-500 text-xs font-semibold tracking-wide uppercase">Live Quiz</span>
-
+              
+            <span className="inline-block px-10 py-2 mb-3 mr-3 rounded-full bg-rose-50 text-rose-500 text-xs font-semibold tracking-wide uppercase absolute right-0 ">Live Quiz</span>
+              
             <h3 className="text-2xl font-bold text-slate-800 mb-2">Quiz Event</h3>
             <p className="text-slate-500 text-sm mb-1">Test your knowledge in our exciting quiz!</p>
             <p className="text-rose-400 text-sm font-medium mb-6">
