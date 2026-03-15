@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Users, Trophy, ArrowLeft, Plus, Clock, ChevronRight, Trash2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event } from '../types';
+import { AppLayout, AppHeader } from '../components/Layout';
 
 const container = { hidden: { opacity: 0 }, visible: { opacity: 1, transition: { staggerChildren: 0.06 } } };
 const card = {
@@ -80,12 +81,9 @@ export default function ViewEvents() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      <div className="fixed top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-violet-600/8 rounded-full blur-[100px] pointer-events-none" />
-
-      {/* Header */}
-      <header className="sticky top-0 z-30 border-b border-white/[0.06] bg-slate-950/80 backdrop-blur-xl">
-        <div className="max-w-5xl mx-auto flex items-center gap-4 px-6 py-4">
+    <AppLayout>
+      <AppHeader>
+        <div className="flex items-center gap-4">
           <button onClick={() => navigate('/dashboard')} className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors" aria-label="Back">
             <ArrowLeft className="w-5 h-5" />
           </button>
@@ -95,7 +93,7 @@ export default function ViewEvents() {
             <Plus className="w-4 h-4" /> New Event
           </motion.button>
         </div>
-      </header>
+      </AppHeader>
 
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
         {loading && (
@@ -222,6 +220,6 @@ export default function ViewEvents() {
           </motion.div>
         )}
       </AnimatePresence>
-    </div>
+    </AppLayout>
   );
 }
