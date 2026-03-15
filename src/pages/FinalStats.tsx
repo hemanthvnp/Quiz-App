@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, ArrowLeft, Crown, Star, BarChart3, ChevronRight, RotateCcw } from 'lucide-react';
+import { Trophy, ArrowLeft, Crown, Star, BarChart3, ChevronRight, RotateCcw, RefreshCw, AlertTriangle } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { supabase } from '../lib/supabase';
 import Podium from '../components/Podium';
@@ -50,6 +50,8 @@ export default function FinalStats() {
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [marking, setMarking] = useState(false);
+  const [confirmRestart, setConfirmRestart] = useState(false);
+  const [restarting, setRestarting] = useState(false);
   const confettiFired = useRef(false);
 
   useEffect(() => {
@@ -124,6 +126,29 @@ export default function FinalStats() {
     await supabase.from('events').update({ status: 'active' }).eq('id', eventId);
     setEvent((prev) => (prev ? { ...prev, status: 'active' } : prev));
     setMarking(false);
+  };
+
+  const handleRestartEvent = async () => {
+    if (!eventId || restarting) return;
+    setRestarting(true);
+    try {
+      // Delete all scores
+      await supabase.from('scores').delete().eq('event_id', eventId);
+      // Reset all rounds to pending
+      await supabase.from('rounds').update({ status: 'pending' }).eq('event_id', eventId);
+      // Reset event
+      const firstRound = rounds.length > 0 ? rounds[0] : null;
+      await supabase.from('events').update({
+        status: 'upcoming',
+        current_round_id: firstRound?.id ?? null,
+        current_question: 0,
+      }).eq('id', eventId);
+      setConfirmRestart(false);
+      navigate(`/events`);
+    } catch {
+      setRestarting(false);
+      setConfirmRestart(false);
+    }
   };
 
   useEffect(() => {
@@ -207,6 +232,15 @@ export default function FinalStats() {
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   {marking ? 'Reopening...' : 'Reopen Event'}
+                </button>
+              )}
+              {event && (
+                <button
+                  onClick={() => setConfirmRestart(true)}
+                  className="px-4 py-2 rounded-lg border border-red-500/20 bg-red-500/10 text-sm font-medium text-red-400 transition-all hover:bg-red-500/20 flex items-center gap-2"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Restart Event
                 </button>
               )}
               <button
@@ -365,6 +399,62 @@ export default function FinalStats() {
           </motion.div>
         </main>
       </div>
+
+      {/* Restart Confirmation Modal */}
+      <AnimatePresence>
+        {confirmRestart && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => !restarting && setConfirmRestart(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-2xl border border-red-500/20 bg-slate-900/95 p-6 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="flex flex-col items-center text-center gap-4">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10 border border-red-500/20">
+                  <AlertTriangle className="h-7 w-7 text-red-400" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white mb-1">Restart Event?</h3>
+                  <p className="text-sm text-slate-400">
+                    This will <span className="text-red-400 font-semibold">delete all scores</span> and reset all rounds. This action cannot be undone.
+                  </p>
+                </div>
+                <div className="flex gap-3 w-full mt-2">
+                  <button
+                    onClick={() => setConfirmRestart(false)}
+                    disabled={restarting}
+                    className="flex-1 py-2.5 rounded-xl border border-white/[0.08] bg-white/[0.03] text-sm font-medium text-slate-400 hover:bg-white/[0.06] transition-colors disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRestartEvent}
+                    disabled={restarting}
+                    className="flex-1 py-2.5 rounded-xl bg-red-600 hover:bg-red-500 text-sm font-semibold text-white transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {restarting ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        Restarting...
+                      </>
+                    ) : (
+                      'Yes, Restart'
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
