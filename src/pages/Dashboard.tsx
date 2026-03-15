@@ -108,7 +108,7 @@ export default function Dashboard() {
             variants={item}
             whileHover={{ y: -2 }}
             onClick={() => navigate('/events')}
-            className="group rounded-2xl border border-white/[0.06] bg-white/[0.02] p-6 text-left hover:bg-white/[0.05] transition-colors cursor-pointer"
+            className="group rounded-2xl border border-white/6 bg-white/[0.02] p-6 text-left hover:bg-white/[0.05] transition-colors cursor-pointer"
           >
             <div className="flex items-center gap-3 mb-3">
               <div className="p-2 rounded-xl bg-emerald-500/10">
