@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Trophy,
   ChevronDown,
   BarChart3,
   Keyboard,
@@ -16,7 +15,6 @@ import {
   Filter,
   ChevronRight,
   ChevronLeft,
-  Star,
   Crown,
   Hash,
   Users,
