@@ -72,7 +72,7 @@ export default function RoundStats() {
   const [roundScores, setRoundScores] = useState<TeamRoundScore[]>([]);
   const [overallScores, setOverallScores] = useState<TeamOverallScore[]>([]);
   const [questionDetails, setQuestionDetails] = useState<QuestionDetail[]>([]);
-  const [eventData, setEventData] = useState<any | null>(null);
+  // Removed unused eventData variable
   const [nextRoundId, setNextRoundId] = useState<string | null>(null);
   const [allRounds, setAllRounds] = useState<Round[]>([]);
   const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
