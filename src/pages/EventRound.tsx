@@ -145,18 +145,16 @@ export default function EventRound() {
   const canReopenRound = useMemo(() => {
     if (!currentRound || currentRound.status !== 'completed') return false;
     if (!event) return false;
+    // Show reopen button for any completed round
+    return true;
+  }, [currentRound, event]);
 
-    // Event is completed — can reopen the last round
-    if (event.status === 'completed') {
-      const maxRoundNum = Math.max(...rounds.map((r) => r.round_number));
-      return currentRound.round_number === maxRoundNum;
-    }
-
-    // Event is active — can reopen the round immediately before the active round
-    const activeRound = rounds.find((r) => r.status === 'active');
-    if (!activeRound) return false;
-    return currentRound.round_number === activeRound.round_number - 1;
-  }, [currentRound, event, rounds]);
+  const canExecuteReopen = useMemo(() => {
+    if (!currentRound || currentRound.status !== 'completed') return false;
+    if (!event) return false;
+    // Allow reopening any completed round
+    return true;
+  }, [currentRound, event]);
 
   // ---- Score calculations ----
   const teamsWithScores: TeamWithScores[] = useMemo(() => {
@@ -299,6 +297,52 @@ export default function EventRound() {
     fetchData();
   }, [fetchData]);
 
+  // ---- Restore tiebreaker state from data ----
+  useEffect(() => {
+    if (!currentRound || !event || rounds.length === 0) return;
+
+    // Check if we're in tiebreaker mode (current_question > question_count)
+    if (event.current_question > currentRound.question_count) {
+      // Detect tied teams from current scores
+      const teamsWithTotals = teams.map((team) => {
+        const totalScore = scores
+          .filter((s) => s.team_id === team.id)
+          .reduce((sum, s) => sum + s.points, 0);
+        return { ...team, totalScore };
+      });
+
+      const sorted = [...teamsWithTotals].sort((a, b) => b.totalScore - a.totalScore);
+      let rank = 1;
+      const ranked = sorted.map((t, i) => {
+        if (i > 0 && t.totalScore < sorted[i - 1].totalScore) rank = i + 1;
+        return { ...t, rank };
+      });
+
+      // Find teams in top 3 with ties
+      const top3 = ranked.filter((t) => t.rank <= 3);
+      const scoreGroups = new Map<number, string[]>();
+      top3.forEach((t) => {
+        const existing = scoreGroups.get(t.totalScore) || [];
+        existing.push(t.id);
+        scoreGroups.set(t.totalScore, existing);
+      });
+
+      const tiedIds = new Set<string>();
+      scoreGroups.forEach((ids) => {
+        if (ids.length > 1) ids.forEach((id) => tiedIds.add(id));
+      });
+
+      if (tiedIds.size > 0) {
+        setTiebreakerMode(true);
+        setTiebreakerTeamIds(tiedIds);
+      }
+    } else {
+      // Not in tiebreaker mode
+      setTiebreakerMode(false);
+      setTiebreakerTeamIds(new Set());
+    }
+  }, [currentRound, event, rounds, teams, scores]);
+
   // ---- Realtime subscription ----
   useEffect(() => {
     if (!eventId) return;
@@ -349,6 +393,9 @@ export default function EventRound() {
         .delete()
         .eq('id', lastAction.scoreId);
       if (error) throw error;
+
+      // Immediately remove from local state
+      setScores((prev) => prev.filter((s) => s.id !== lastAction.scoreId));
 
       // Cancel auto-complete if undoing
       if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
@@ -415,23 +462,27 @@ setLeaderboardOpen((v) => !v);
     try {
       await supabase.from('rounds').update({ status: 'completed' }).eq('id', currentRound.id);
 
-      const nextRound = rounds.find((r) => r.round_number === currentRound.round_number + 1);
+      // Find the next NON-COMPLETED round (not just the next round number)
+      const nextNonCompletedRound = rounds.find(
+        (r) => r.round_number > currentRound.round_number && r.status !== 'completed'
+      );
 
-      if (nextRound) {
-        await supabase.from('rounds').update({ status: 'active' }).eq('id', nextRound.id);
-        await supabase.from('events').update({ current_round_id: nextRound.id, current_question: 1 }).eq('id', eventId);
+      if (nextNonCompletedRound) {
+        await supabase.from('rounds').update({ status: 'active' }).eq('id', nextNonCompletedRound.id);
+        await supabase.from('events').update({ current_round_id: nextNonCompletedRound.id, current_question: 1 }).eq('id', eventId);
 
         setRounds((prev) =>
           prev.map((r) => {
             if (r.id === currentRound.id) return { ...r, status: 'completed' };
-            if (r.id === nextRound.id) return { ...r, status: 'active' };
+            if (r.id === nextNonCompletedRound.id) return { ...r, status: 'active' };
             return r;
           })
         );
-        setCurrentRoundId(nextRound.id);
-        setEvent((prev) => (prev ? { ...prev, current_round_id: nextRound.id, current_question: 1 } : prev));
+        setCurrentRoundId(nextNonCompletedRound.id);
+        setEvent((prev) => (prev ? { ...prev, current_round_id: nextNonCompletedRound.id, current_question: 1 } : prev));
         navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
       } else {
+        // All rounds completed - mark event as completed and go to final stats
         await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
         setRounds((prev) =>
           prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
@@ -507,9 +558,12 @@ setLeaderboardOpen((v) => !v);
           action_type: actionType,
           points,
           winning_team_id: isPositive ? teamId : null,
-        }).select('id').single();
+        }).select().single();
 
         if (insertError) throw insertError;
+
+        // Immediately add the new score to local state (don't wait for realtime subscription)
+        setScores((prev) => [...prev, insertedScore as Score]);
 
         let feedbackOverride: string | null = null;
 
@@ -612,6 +666,14 @@ setLeaderboardOpen((v) => !v);
         .update({ points: newPts })
         .eq('id', editingScore.scoreId);
       if (updateError) throw updateError;
+      
+      // Immediately update local state
+      setScores((prev) =>
+        prev.map((s) =>
+          s.id === editingScore.scoreId ? { ...s, points: newPts } : s
+        )
+      );
+      
       showFeedback(`Updated ${editingScore.teamName}: ${newPts} pts`);
       setEditModalOpen(false);
       setEditingScore(null);
@@ -636,12 +698,100 @@ setLeaderboardOpen((v) => !v);
 
   // ---- Round switching ----
   const switchRound = useCallback(
-    (roundId: string) => {
-      setCurrentRoundId(roundId);
-      setRoundDropdownOpen(false);
-      setLastAction(null);
+    async (roundId: string) => {
+      if (!eventId || !currentRound || roundId === currentRoundId) return;
+      
+      setSubmitting(true);
+      try {
+        const targetRound = rounds.find((r) => r.id === roundId);
+        if (!targetRound) return;
+
+        // 1. Handle the current (source) round:
+        //    - If NOT completed → change to "pending"
+        //    - If completed → keep as "completed"
+        if (currentRound.status === 'active') {
+          const newStatusForCurrentRound = 'pending' as const;
+          await supabase
+            .from('rounds')
+            .update({ status: newStatusForCurrentRound })
+            .eq('id', currentRound.id);
+
+          setRounds((prev) =>
+            prev.map((r) =>
+              r.id === currentRound.id ? { ...r, status: newStatusForCurrentRound } : r
+            )
+          );
+        }
+
+        // 2. Handle the target (destination) round:
+        //    - If NOT completed → change to "active"
+        //    - If completed → keep as "completed" (allow viewing/modifying, but don't activate)
+        if (targetRound.status !== 'completed') {
+          await supabase
+            .from('rounds')
+            .update({ status: 'active' })
+            .eq('id', roundId);
+
+          setRounds((prev) =>
+            prev.map((r) =>
+              r.id === roundId ? { ...r, status: 'active' as const } : r
+            )
+          );
+        }
+
+        // 3. Calculate the correct current_question for the target round
+        let targetCurrentQuestion = 1;
+        if (targetRound.status !== 'completed') {
+          // For active/pending rounds: calculate based on winning answers
+          const roundWinningScores = scores.filter(
+            (s) => s.round_id === roundId && s.winning_team_id
+          );
+          if (roundWinningScores.length > 0) {
+            targetCurrentQuestion =
+              Math.max(...roundWinningScores.map((s) => s.question_number)) + 1;
+          }
+        } else {
+          // For completed rounds: show max question number (all questions answered)
+          const roundScores = scores.filter((s) => s.round_id === roundId);
+          if (roundScores.length > 0) {
+            targetCurrentQuestion = Math.max(...roundScores.map((s) => s.question_number)) + 1;
+          } else {
+            targetCurrentQuestion = targetRound.question_count + 1;
+          }
+        }
+
+        // 4. Update event's current round reference
+        await supabase
+          .from('events')
+          .update({ current_round_id: roundId, current_question: targetCurrentQuestion })
+          .eq('id', eventId);
+
+        // 5. Update local state
+        setCurrentRoundId(roundId);
+        setEvent((prev) =>
+          prev
+            ? {
+                ...prev,
+                current_round_id: roundId,
+                current_question: targetCurrentQuestion,
+              }
+            : prev
+        );
+        setRoundDropdownOpen(false);
+        setLastAction(null);
+
+        // Reset tiebreaker state when switching rounds
+        setTiebreakerMode(false);
+        setTiebreakerTeamIds(new Set());
+
+        showFeedback(`Switched to ${targetRound.round_name}`);
+      } catch (err: unknown) {
+        showFeedback(`Error: ${err instanceof Error ? err.message : 'Failed to switch round'}`);
+      } finally {
+        setSubmitting(false);
+      }
     },
-    []
+    [currentRound, currentRoundId, eventId, event, rounds, scores, showFeedback]
   );
 
   // ---- Complete round & activate next ----
@@ -658,42 +808,63 @@ setLeaderboardOpen((v) => !v);
 
     setSubmitting(true);
     try {
+      // 1. Mark current round as completed
       await supabase.from('rounds').update({ status: 'completed' }).eq('id', currentRound.id);
 
-      const nextRound = rounds.find((r) => r.round_number === currentRound.round_number + 1);
+      // 2. Find the next NON-COMPLETED round (not just the next round number)
+      const nextNonCompletedRound = rounds.find(
+        (r) => r.round_number > currentRound.round_number && r.status !== 'completed'
+      );
 
-      if (nextRound) {
-        await supabase.from('rounds').update({ status: 'active' }).eq('id', nextRound.id);
-        await supabase.from('events').update({ current_round_id: nextRound.id, current_question: 1 }).eq('id', eventId);
+      if (nextNonCompletedRound) {
+        // 3a. If there's a non-completed round, activate it
+        await supabase
+          .from('rounds')
+          .update({ status: 'active' })
+          .eq('id', nextNonCompletedRound.id);
+
+        await supabase
+          .from('events')
+          .update({ current_round_id: nextNonCompletedRound.id, current_question: 1 })
+          .eq('id', eventId);
 
         setRounds((prev) =>
           prev.map((r) => {
             if (r.id === currentRound.id) return { ...r, status: 'completed' };
-            if (r.id === nextRound.id) return { ...r, status: 'active' };
+            if (r.id === nextNonCompletedRound.id) return { ...r, status: 'active' };
             return r;
           })
         );
-        setCurrentRoundId(nextRound.id);
-        setEvent((prev) => (prev ? { ...prev, current_round_id: nextRound.id, current_question: 1 } : prev));
-        showFeedback(`Round completed! Now on ${nextRound.round_name}`);
+        setCurrentRoundId(nextNonCompletedRound.id);
+        setEvent((prev) =>
+          (prev ? { ...prev, current_round_id: nextNonCompletedRound.id, current_question: 1 } : prev)
+        );
+        showFeedback(`Round completed! Now on ${nextNonCompletedRound.round_name}`);
+        navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
       } else {
-        await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
+        // 3b. All rounds completed - mark event as completed and go to final stats
+        await supabase
+          .from('events')
+          .update({ status: 'completed' })
+          .eq('id', eventId);
+
         setRounds((prev) =>
           prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
         );
         setEvent((prev) => (prev ? { ...prev, status: 'completed' } : prev));
-        showFeedback('Event completed!');
+        showFeedback('All rounds completed! Going to final results...');
+        navigate(`/events/${eventId}/final-stats`);
       }
     } catch (err: unknown) {
       showFeedback(`Error: ${err instanceof Error ? err.message : 'Failed to complete round'}`);
     } finally {
       setSubmitting(false);
     }
-  }, [currentRound, eventId, event, rounds, showFeedback]);
+  }, [currentRound, eventId, event, rounds, showFeedback, navigate]);
 
   // ---- Reopen a completed round ----
   const handleReopenRound = useCallback(async () => {
-    if (!currentRound || !eventId || submitting || !canReopenRound) return;
+    if (!currentRound || !eventId || submitting || !canExecuteReopen) return;
     setSubmitting(true);
     try {
       // 1. Reactivate this round
@@ -764,17 +935,26 @@ setLeaderboardOpen((v) => !v);
     } finally {
       setSubmitting(false);
     }
-  }, [currentRound, eventId, event, rounds, scores, submitting, canReopenRound, showFeedback]);
+  }, [currentRound, eventId, event, rounds, scores, submitting, canExecuteReopen, showFeedback]);
 
   // ---- Navigate to stats ----
   const handleViewStats = useCallback(() => {
     if (!eventId || !currentRound) return;
+    
     if (isLastRound) {
+      // Check if all rounds are completed before going to final stats
+      const allRoundsCompleted = rounds.every((r) => r.status === 'completed');
+      
+      if (!allRoundsCompleted) {
+        showFeedback('Cannot view final results: not all rounds are completed');
+        return;
+      }
+      
       navigate(`/events/${eventId}/final-stats`);
     } else {
       navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
     }
-  }, [eventId, currentRound, isLastRound, navigate]);
+  }, [eventId, currentRound, isLastRound, rounds, navigate, showFeedback]);
 
   // ---- Start tiebreaker ----
   const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
