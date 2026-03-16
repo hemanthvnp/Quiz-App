@@ -24,6 +24,7 @@ import {
   Loader2,
   RotateCcw,
   Pencil,
+  SkipForward,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event, Round, Team, Score, TeamWithScores, ActionType } from '../types';
@@ -124,6 +125,13 @@ export default function EventRound() {
   // ---- Tiebreaker state ----
   const [tiebreakerMode, setTiebreakerMode] = useState(false);
   const [tiebreakerTeamIds, setTiebreakerTeamIds] = useState<Set<string>>(new Set());
+  // Persistence for tiebreaker state per round
+  const [roundTiebreakerStates, setRoundTiebreakerStates] = useState<Record<string, {mode: boolean; teams: Set<string>}>>({});
+
+// ---- History Edit state ----
+  const [editingHistoryQuestion, setEditingHistoryQuestion] = useState<{ targetQuestion: number; originalQuestion: number } | null>(null);
+  const [deletingQuestion, setDeletingQuestion] = useState<number | null>(null);
+  const deleteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // ---- Final Results Modal state ----
   const [showFinalResultsModal, setShowFinalResultsModal] = useState(false);
@@ -186,12 +194,20 @@ export default function EventRound() {
     return sorted;
   }, [teamsWithScores, sortKey, sortAsc, filterMode]);
 
-  const questionHistory = useMemo(() => {
+    const questionHistory = useMemo(() => {
     if (!currentRoundId) return [];
-    const roundScores = scores.filter((s) => s.round_id === currentRoundId);
+    
+    // Group scores by question, deduplicate by scoreId (latest wins)
+    const scoreMap = new Map<string, Score>();
+    scores
+      .filter((s) => s.round_id === currentRoundId)
+      .forEach((s) => scoreMap.set(s.id, s));
+    
+    const roundScores = Array.from(scoreMap.values());
+    
     const map = new Map<number, {
       questionNumber: number;
-      actions: { scoreId: string; teamId: string; teamName: string; actionType: ActionType; points: number }[];
+      actions: { scoreId: string; teamId: string | null; teamName: string; actionType: ActionType; points: number }[];
       winnerTeamName: string | null;
     }>();
 
@@ -205,7 +221,7 @@ export default function EventRound() {
         scoreId: s.id,
         teamId: s.team_id,
         teamName: team?.name ?? 'Unknown',
-        actionType: s.action_type,
+        actionType: s.action_type as ActionType,
         points: s.points,
       });
       if (s.winning_team_id && !entry.winnerTeamName) {
@@ -301,51 +317,7 @@ export default function EventRound() {
     fetchData();
   }, [fetchData]);
 
-  // ---- Restore tiebreaker state from data ----
-  useEffect(() => {
-    if (!currentRound || !event || rounds.length === 0) return;
 
-    // Check if we're in tiebreaker mode (current_question > question_count)
-    if (event.current_question > currentRound.question_count) {
-      // Detect tied teams from current scores
-      const teamsWithTotals = teams.map((team) => {
-        const totalScore = scores
-          .filter((s) => s.team_id === team.id)
-          .reduce((sum, s) => sum + s.points, 0);
-        return { ...team, totalScore };
-      });
-
-      const sorted = [...teamsWithTotals].sort((a, b) => b.totalScore - a.totalScore);
-      let rank = 1;
-      const ranked = sorted.map((t, i) => {
-        if (i > 0 && t.totalScore < sorted[i - 1].totalScore) rank = i + 1;
-        return { ...t, rank };
-      });
-
-      // Find teams in top 3 with ties
-      const top3 = ranked.filter((t) => t.rank <= 3);
-      const scoreGroups = new Map<number, string[]>();
-      top3.forEach((t) => {
-        const existing = scoreGroups.get(t.totalScore) || [];
-        existing.push(t.id);
-        scoreGroups.set(t.totalScore, existing);
-      });
-
-      const tiedIds = new Set<string>();
-      scoreGroups.forEach((ids) => {
-        if (ids.length > 1) ids.forEach((id) => tiedIds.add(id));
-      });
-
-      if (tiedIds.size > 0) {
-        setTiebreakerMode(true);
-        setTiebreakerTeamIds(tiedIds);
-      }
-    } else {
-      // Not in tiebreaker mode
-      setTiebreakerMode(false);
-      setTiebreakerTeamIds(new Set());
-    }
-  }, [currentRound, event, rounds, teams, scores]);
 
   // ---- Realtime subscription ----
   useEffect(() => {
@@ -510,7 +482,12 @@ setLeaderboardOpen((v) => !v);
   // ---- Scoring action ----
   const handleScore = useCallback(
     async (teamId: string, actionType: ActionType, customPoints?: number) => {
-      if (!event || !currentRound || !eventId || submitting) return;
+      if (!event || !currentRound || !eventId || submitting || currentRound.status === 'completed') {
+        if (currentRound?.status === 'completed') {
+          showFeedback('Scoring disabled on completed rounds');
+        }
+        return;
+      }
 
       // In tiebreaker mode, only allow scoring for tiebreaker teams
       if (tiebreakerMode && !tiebreakerTeamIds.has(teamId)) {
@@ -578,61 +555,39 @@ setLeaderboardOpen((v) => !v);
         let feedbackOverride: string | null = null;
 
         if (isPositive) {
-          const nextQ = event.current_question + 1;
-          await supabase.from('events').update({ current_question: nextQ }).eq('id', eventId);
-          setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
+          if (editingHistoryQuestion && event.current_question === editingHistoryQuestion.targetQuestion) {
+            // Historical edit: auto-return, no advance
+            const { originalQuestion } = editingHistoryQuestion;
+            await supabase.from('events').update({ current_question: originalQuestion }).eq('id', eventId);
+            setEvent((prev) => (prev ? { ...prev, current_question: originalQuestion } : prev));
+            setEditingHistoryQuestion(null);
+            feedbackOverride = `Q${event.current_question} updated! Back to current.`;
+          } else {
+            // Normal flow
+            const nextQ = event.current_question + 1;
+            await supabase.from('events').update({ current_question: nextQ }).eq('id', eventId);
+            setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
 
-          // Compute updated totals including this new score (state hasn't updated from realtime yet)
-          const updatedTotals = new Map<string, number>();
-          teams.forEach(t => {
-            const total = scores.filter(s => s.team_id === t.id).reduce((sum, s) => sum + s.points, 0);
-            updatedTotals.set(t.id, total);
-          });
-          updatedTotals.set(teamId, (updatedTotals.get(teamId) || 0) + points);
-
-          if (!tiebreakerMode && nextQ > currentRound.question_count) {
-            // All regular questions answered — check for ties in top 3 before auto-completing
-            const sortedEntries = Array.from(updatedTotals.entries()).sort(([, a], [, b]) => b - a);
-            let rnk = 1;
-            const ranked = sortedEntries.map(([id, score], i) => {
-              if (i > 0 && score < sortedEntries[i - 1][1]) rnk = i + 1;
-              return { id, score, rank: rnk };
+            // Compute updated totals including this new score (state hasn't updated from realtime yet)
+            const updatedTotals = new Map<string, number>();
+            teams.forEach(t => {
+              const total = scores.filter(s => s.team_id === t.id).reduce((sum, s) => sum + s.points, 0);
+              updatedTotals.set(t.id, total);
             });
-            const top3 = ranked.filter(r => r.rank <= 3);
-            const scoreGroups = new Map<number, string[]>();
-            top3.forEach(r => {
-              const existing = scoreGroups.get(r.score) || [];
-              existing.push(r.id);
-              scoreGroups.set(r.score, existing);
-            });
-            const tiedIds = new Set<string>();
-            scoreGroups.forEach((ids) => { if (ids.length > 1) ids.forEach(id => tiedIds.add(id)); });
+            updatedTotals.set(teamId, (updatedTotals.get(teamId) || 0) + points);
 
-            if (tiedIds.size > 0) {
-              // Ties detected — auto-enter tiebreaker mode instead of completing
-              setTiebreakerMode(true);
-              setTiebreakerTeamIds(tiedIds);
-              const tiedNames = teams.filter(t => tiedIds.has(t.id)).map(t => t.name).join(', ');
-              feedbackOverride = `Tie detected! Tiebreaker: ${tiedNames}`;
-            } else {
-              // No ties — auto-complete round
+            if (!tiebreakerMode && nextQ > currentRound.question_count) {
+              // All regular questions answered — auto-complete round (tiebreaker button will handle ties manually)
               if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
               autoCompleteTimeout.current = setTimeout(() => autoCompleteRound(), 800);
-            }
-          } else if (tiebreakerMode) {
+            } else if (tiebreakerMode) {
             // During tiebreaker — check if ties among tiebreaker teams are resolved
             const tiebreakerScores = Array.from(tiebreakerTeamIds).map(id => updatedTotals.get(id) || 0);
             const allUnique = new Set(tiebreakerScores).size === tiebreakerScores.length;
 
             if (allUnique) {
-              // Ties resolved — auto-end tiebreaker and complete round
-              feedbackOverride = 'Tie broken! Completing round...';
-              if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
-              autoCompleteTimeout.current = setTimeout(() => {
-                setTiebreakerMode(false);
-                setTiebreakerTeamIds(new Set());
-                autoCompleteRound();
-              }, 800);
+              // Ties resolved — show feedback but let user complete manually
+              feedbackOverride = 'Tie broken! Ready to complete round.';
             }
           }
         }
@@ -655,7 +610,7 @@ setLeaderboardOpen((v) => !v);
 
         setAnimatingTeamId(teamId);
         setTimeout(() => setAnimatingTeamId(null), 500);
-      } catch (err: unknown) {
+      }} catch (err: unknown) {
         showFeedback(`Error: ${err instanceof Error ? err.message : 'Scoring failed'}`);
       } finally {
         setSubmitting(false);
@@ -663,6 +618,34 @@ setLeaderboardOpen((v) => !v);
     },
     [event, currentRound, eventId, teams, scores, showFeedback, submitting, tiebreakerMode, tiebreakerTeamIds, autoCompleteRound]
   );
+
+  // ---- Skip question ----
+  const handleSkipQuestion = useCallback(async () => {
+    if (!event || !currentRound || !eventId) return;
+    
+    try {
+      setSubmitting(true);
+      
+      // Just move to next question without creating a record
+      const nextQ = event.current_question + 1;
+      const { error: updateError } = await supabase
+        .from('events')
+        .update({ current_question: nextQ })
+        .eq('id', eventId);
+
+      if (updateError) throw updateError;
+
+      // Update local state
+      setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
+
+      showFeedback(`Question ${event.current_question} skipped → Moving to Question ${nextQ}`);
+    } catch (err: unknown) {
+      console.error('Skip question error:', err);
+      showFeedback(`Error: ${err instanceof Error ? err.message : 'Skip failed'}`);
+    } finally {
+      setSubmitting(false);
+    }
+  }, [event, currentRound, eventId, showFeedback]);
 
   // ---- Edit score ----
   const handleEditScore = useCallback(async () => {
@@ -790,9 +773,15 @@ setLeaderboardOpen((v) => !v);
         setRoundDropdownOpen(false);
         setLastAction(null);
 
-        // Reset tiebreaker state when switching rounds
-        setTiebreakerMode(false);
-        setTiebreakerTeamIds(new Set());
+        // Restore tiebreaker state for target round
+        const tbState = roundTiebreakerStates[roundId];
+        if (tbState) {
+          setTiebreakerMode(tbState.mode);
+          setTiebreakerTeamIds(tbState.teams);
+        } else {
+          setTiebreakerMode(false);
+          setTiebreakerTeamIds(new Set());
+        }
 
         showFeedback(`Switched to ${targetRound.round_name}`);
       } catch (err: unknown) {
@@ -885,9 +874,9 @@ setLeaderboardOpen((v) => !v);
 
       const wasEventCompleted = event?.status === 'completed';
 
-      // 2. If there's a next round that is currently active, set it to pending
+      // 2. If there's a next round that is currently active (NOT completed), set it to pending
       const nextRound = rounds.find(
-        (r) => r.round_number === currentRound.round_number + 1
+        (r) => r.round_number === currentRound.round_number + 1 && r.status !== 'completed'
       );
       if (nextRound && nextRound.status === 'active') {
         await supabase
@@ -952,58 +941,50 @@ setLeaderboardOpen((v) => !v);
     if (!eventId || !currentRound) return;
     
     if (isLastRound) {
-      // Check if all rounds are completed before going to final stats
       if (incompleteRounds.length > 0) {
-        // Show modal with incomplete rounds warning
-        setShowFinalResultsModal(true);
-      } else {
-        // All rounds completed, navigate directly
-        navigate(`/events/${eventId}/final-stats`);
+        showFeedback(`Cannot view final results: ${incompleteRounds.length} round(s) not completed. Complete all rounds first.`);
+        return;
       }
+      navigate(`/events/${eventId}/final-stats`);
     } else {
       navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
     }
-  }, [eventId, currentRound, isLastRound, incompleteRounds.length, navigate]);
+  }, [eventId, currentRound, isLastRound, incompleteRounds.length, navigate, showFeedback]);
 
   // ---- Start tiebreaker ----
-  const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
+    const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
+    if (!currentRoundId) return;
+    const newState = { mode: true, teams: new Set(tiedIds) };
+    setRoundTiebreakerStates(prev => ({ ...prev, [currentRoundId]: newState }));
     setTiebreakerMode(true);
     setTiebreakerTeamIds(tiedIds);
     showFeedback(`Tiebreaker started for ${tiedIds.size} teams`);
-  }, [showFeedback]);
+  }, [showFeedback, currentRoundId]);
 
   // ---- End tiebreaker ----
-  const handleEndTiebreaker = useCallback(() => {
+  const handleEndTiebreaker = useCallback(async () => {
+    if (!currentRoundId) return;
+    setRoundTiebreakerStates(prev => {
+      const newStates = { ...prev };
+      delete newStates[currentRoundId];
+      return newStates;
+    });
     setTiebreakerMode(false);
     setTiebreakerTeamIds(new Set());
-    autoCompleteRound();
-  }, [autoCompleteRound]);
+    
+    // Check if ties resolved after tiebreaker
+    setTimeout(() => {
+      if (!tiedTeamsInfo.hasTies) {
+        autoCompleteRound();
+        showFeedback('Tiebreaker complete - round auto-completed!');
+      } else {
+        showFeedback('Tiebreaker ended - check rankings and complete manually');
+      }
+    }, 500);
+  }, [autoCompleteRound, showFeedback, tiedTeamsInfo.hasTies, currentRoundId]);
 
   // ---- Confirm final results (mark incomplete rounds as completed) ----
-  const handleConfirmFinalResults = useCallback(async () => {
-    if (!eventId) return;
-    try {
-      setSubmitting(true);
-      
-      // Mark event as completed
-      await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
-      
-      // Mark all incomplete rounds as completed
-      await Promise.all(
-        incompleteRounds.map((r) =>
-          supabase.from('rounds').update({ status: 'completed' }).eq('id', r.id)
-        )
-      );
-      
-      setShowFinalResultsModal(false);
-      navigate(`/events/${eventId}/final-stats`);
-    } catch (err) {
-      console.error('Error confirming final results:', err);
-      showFeedback('Failed to confirm final results');
-    } finally {
-      setSubmitting(false);
-    }
-  }, [eventId, incompleteRounds, navigate, showFeedback]);
+  // Removed bypass modal functionality - final results now strictly require all rounds completed
 
   // ---- Loading / Error states ----
   if (loading) {
@@ -1107,24 +1088,53 @@ setLeaderboardOpen((v) => !v);
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
-                tiebreakerMode
+                editingHistoryQuestion 
+                  ? 'border-amber-500/30 bg-amber-500/10 ring-2 ring-amber-500/30'
+                  : tiebreakerMode
                   ? 'border-amber-500/20 bg-amber-500/10'
                   : 'border-cyan-500/20 bg-cyan-500/10'
               }`}
             >
-              <Hash className={`h-4 w-4 ${tiebreakerMode ? 'text-amber-400' : 'text-cyan-400'}`} />
-              <span className="text-sm font-medium text-slate-400">
-                {tiebreakerMode ? 'Tiebreaker Q' : 'Question'}
-              </span>
-              <span className={`text-xl font-bold ${tiebreakerMode ? 'text-amber-300' : 'text-cyan-300'}`}>
-                {tiebreakerMode
-                  ? event.current_question - (currentRound?.question_count ?? 0)
-                  : event.current_question}
-              </span>
-              {currentRound && (
-                <span className="text-xs text-slate-500">
-                  / {tiebreakerMode ? (currentRound.tiebreaker_questions ?? 3) : currentRound.question_count}
-                </span>
+              {editingHistoryQuestion ? (
+                <>
+                  <div className="flex items-center gap-1">
+                    <RotateCcw className="h-4 w-4 text-amber-400" />
+                    <span className="text-sm font-bold text-amber-300">
+                      Editing Q{editingHistoryQuestion.targetQuestion}
+                    </span>
+                    <button
+                      onClick={() => {
+                        if (editingHistoryQuestion && event) {
+                          supabase.from('events').update({ current_question: editingHistoryQuestion.originalQuestion }).eq('id', eventId!);
+                          setEvent(prev => prev ? { ...prev, current_question: editingHistoryQuestion.originalQuestion } : prev);
+                          setEditingHistoryQuestion(null);
+                          showFeedback('Edit cancelled - returned to current question');
+                        }
+                      }}
+                      className="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 transition-colors"
+                      title="Cancel Edit"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Hash className={`h-4 w-4 ${tiebreakerMode ? 'text-amber-400' : 'text-cyan-400'}`} />
+                  <span className="text-sm font-medium text-slate-400">
+                    {tiebreakerMode ? 'Tiebreaker Q' : 'Question'}
+                  </span>
+                  <span className={`text-xl font-bold ${tiebreakerMode ? 'text-amber-300' : 'text-cyan-300'}`}>
+{tiebreakerMode
+                      ? Math.max(1, event.current_question - (currentRound?.question_count ?? 0))
+                      : event.current_question}
+                  </span>
+                  {currentRound && (
+                    <span className="text-xs text-slate-500">
+                      / {tiebreakerMode ? (currentRound.tiebreaker_questions ?? 3) : currentRound.question_count}
+                    </span>
+                  )}
+                </>
               )}
             </motion.div>
           </div>
@@ -1217,7 +1227,7 @@ setLeaderboardOpen((v) => !v);
                 <div>
                   <p className="text-sm font-bold text-amber-300">Tiebreaker Mode</p>
                   <p className="text-[10px] text-amber-400/60">
-                    {tiebreakerTeamIds.size} teams &middot; Tiebreaker Q{event.current_question - (currentRound?.question_count ?? 0)}/{currentRound?.tiebreaker_questions ?? 3}
+Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count ?? 0))}/{currentRound?.tiebreaker_questions ?? 3}
                   </p>
                 </div>
               </div>
@@ -1280,20 +1290,67 @@ setLeaderboardOpen((v) => !v);
                               </p>
                             </div>
                             <button
-                              onClick={() => {
-                                setEditingScore({
-                                  scoreId: a.scoreId,
-                                  teamName: a.teamName,
-                                  actionType: a.actionType,
-                                  currentPoints: a.points,
-                                });
-                                setEditPoints(String(a.points));
-                                setEditModalOpen(true);
+                              disabled={!!editingHistoryQuestion || !!deletingQuestion}
+                              onClick={async () => {
+                                if (!eventId || !currentRoundId || !!editingHistoryQuestion || !!deletingQuestion) return;
+                                
+                                setDeletingQuestion(q.questionNumber);
+                                if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current);
+                                
+                                try {
+                                  const originalQuestion = event!.current_question;
+                                  
+                                  // Delete all scores for this question
+                                  const { error: deleteError } = await supabase
+                                    .from('scores')
+                                    .delete()
+                                    .eq('round_id', currentRoundId)
+                                    .eq('question_number', q.questionNumber);
+                                  
+                                  if (deleteError) {
+                                    showFeedback(`Failed to clear Q${q.questionNumber}: ${deleteError.message}`);
+                                    return;
+                                  }
+                                  
+                                  // Immediate local cleanup + debounce recompute
+                                  setScores((prev) =>
+                                    prev.filter(
+                                      (s) => !(s.round_id === currentRoundId && s.question_number === q.questionNumber)
+                                    )
+                                  );
+                                  
+                                  deleteTimeoutRef.current = setTimeout(() => {
+                                    setDeletingQuestion(null);
+                                  }, 500);
+                                  
+                                  // Navigate to edit position
+                                  await supabase
+                                    .from('events')
+                                    .update({ current_question: q.questionNumber })
+                                    .eq('id', eventId);
+                                  setEvent((prev) =>
+                                    prev ? { ...prev, current_question: q.questionNumber } : prev
+                                  );
+                                  
+                                  // Enter edit mode
+                                  setEditingHistoryQuestion({
+                                    targetQuestion: q.questionNumber,
+                                    originalQuestion,
+                                  });
+                                  showFeedback(`Q${q.questionNumber} cleared - score teams to rebuild`);
+                                } catch (err) {
+                                  showFeedback(`Edit failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                                  setDeletingQuestion(null);
+                                }
                               }}
-                              className="opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded text-slate-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition-all"
-                              title="Edit score"
+                              className={`ml-auto opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded transition-all ${editingHistoryQuestion || deletingQuestion ? 'text-slate-500 cursor-not-allowed' : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/20'}`}
+                              title={(editingHistoryQuestion || deletingQuestion) ? 'Finish current operation' : 'Rebuild/edit this question'}
                             >
-                              <Pencil className="w-3 h-3" />
+                              {deletingQuestion === q.questionNumber ? (
+                                <Loader2 className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <RotateCcw className="w-3 h-3" />
+                              )}
                             </button>
                           </div>
                         ))}
@@ -1496,16 +1553,48 @@ setLeaderboardOpen((v) => !v);
               {isLastRound ? 'Final Results' : 'Round Stats'}
             </motion.button>
 
-            {/* Tiebreaker button — shown when all questions answered and ties detected */}
-            {!tiebreakerMode && tiedTeamsInfo.hasTies && currentRound?.status === 'active' && event.current_question > (currentRound?.question_count ?? 0) && (
+            {/* Skip Question button */}
+            {currentRound?.status === 'active' && event.current_question <= (currentRound?.question_count ?? 0) && (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleSkipQuestion}
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-xl border border-slate-500/30 bg-slate-600/20 px-6 py-3 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <SkipForward className="h-4 w-4" />
+                Skip Question
+              </motion.button>
+            )}
+
+            {/* Manual Tiebreaker button — ONLY when NOT in tiebreaker mode */}
+            {(!tiebreakerMode && !roundTiebreakerStates[currentRoundId ?? '']?.mode) && tiedTeamsInfo.hasTies && currentRound?.status === 'active' && event.current_question > (currentRound?.question_count ?? 0) && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={() => handleStartTiebreaker(tiedTeamsInfo.tiedTeamIds)}
-                className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+                className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-400 ring-1 ring-amber-500/30 transition-all hover:bg-amber-500/20 hover:shadow-lg"
               >
                 <Zap className="h-4 w-4" />
-                Tiebreaker ({tiedTeamsInfo.tiedTeamIds.size} teams)
+                <span className="font-bold">Top {tiedTeamsInfo.tiedTeamIds.size} teams tied!</span>
+                <span className="text-xs">(Start Tiebreaker)</span>
+              </motion.button>
+            )}
+
+            {/* Manual Complete button — ONLY when no ties and ready */}
+            {currentRound?.status === 'active' && 
+             event.current_question > (currentRound?.question_count ?? 0) && 
+             !tiedTeamsInfo.hasTies && !tiebreakerMode && (
+              <motion.button
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+                onClick={handleCompleteRound}
+                disabled={submitting}
+                className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 hover:shadow-lg disabled:opacity-40"
+              >
+                <CheckCircle2 className="h-4 w-4" />
+                Complete Round
+                {!isLastRound && <ChevronRight className="h-4 w-4" />}
               </motion.button>
             )}
 
@@ -1881,100 +1970,7 @@ setLeaderboardOpen((v) => !v);
       {/*  FINAL RESULTS CONFIRMATION MODAL                                  */}
       {/* ================================================================== */}
       <AnimatePresence>
-        {showFinalResultsModal && (
-          <motion.div
-            variants={overlayVariants}
-            initial="hidden"
-            animate="visible"
-            exit="exit"
-            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
-            onClick={() => setShowFinalResultsModal(false)}
-          >
-            <motion.div
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="exit"
-              onClick={(e) => e.stopPropagation()}
-              className="relative w-full max-w-lg rounded-2xl border border-white/[0.08] bg-slate-900/95 shadow-2xl backdrop-blur-xl"
-            >
-              <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="h-5 w-5 text-amber-400" />
-                  <h3 className="text-lg font-bold">Incomplete Rounds</h3>
-                </div>
-                <button
-                  onClick={() => setShowFinalResultsModal(false)}
-                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
 
-              <div className="flex border-b border-white/[0.06]">
-                <div className="flex-1 border-r border-white/[0.06] px-4 py-3">
-                  <p className="text-xs text-slate-500 font-medium">ROUND</p>
-                </div>
-              </div>
-
-              <div className="max-h-[300px] overflow-y-auto p-4 space-y-2">
-                {incompleteRounds.length > 0 ? (
-                  incompleteRounds.map((round) => (
-                    <div
-                      key={round.id}
-                      className="flex items-center gap-4 rounded-xl border bg-white/[0.02] border-white/[0.06] px-4 py-3"
-                    >
-                      <div className="flex-1">
-                        <p className="font-medium text-white">{round.round_name}</p>
-                        <p className="text-sm text-slate-400">Round {round.round_number}</p>
-                      </div>
-                      <span className="rounded-lg bg-yellow-500/20 px-2.5 py-1 text-xs font-semibold text-yellow-300">
-                        {round.status === 'pending' ? 'Pending' : 'Active'}
-                      </span>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-4 text-slate-400">No incomplete rounds</div>
-                )}
-              </div>
-
-              <div className="border-t border-white/[0.06] px-6 py-4">
-                <div className="mb-4 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
-                  <p className="text-sm text-amber-300">
-                    <span className="font-semibold">Note:</span> Clicking "Skip to Final Results" will automatically mark all remaining rounds as completed.
-                  </p>
-                </div>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => setShowFinalResultsModal(false)}
-                    className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-slate-400 hover:bg-white/[0.06] transition-colors"
-                  >
-                    Back
-                  </button>
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                    onClick={handleConfirmFinalResults}
-                    disabled={submitting}
-                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Processing...
-                      </>
-                    ) : (
-                      <>
-                        <BarChart3 className="h-4 w-4" />
-                        Skip to Final Results
-                      </>
-                    )}
-                  </motion.button>
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
     </AppLayout>
   );
