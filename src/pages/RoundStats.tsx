@@ -79,7 +79,7 @@ export default function RoundStats() {
   const [showFinalResultsModal, setShowFinalResultsModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const isEventCompleted = eventData?.status === 'completed';
+  // Removed unused isEventCompleted variable
 
   useEffect(() => {
     if (!eventId || !roundId) return;
