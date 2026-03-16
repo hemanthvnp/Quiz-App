@@ -177,7 +177,7 @@ export default function ManageTeams() {
         <div className="flex items-center gap-4">
           <button
             onClick={() => navigate('/events')}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/6 transition-colors"
             aria-label="Back"
           >
             <ArrowLeft className="w-5 h-5" />
@@ -458,7 +458,7 @@ export default function ManageTeams() {
                 </h2>
                 <button
                   onClick={() => { setShowAddModal(false); setNewTeamName(''); setNewTeamLead(''); }}
-                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/6 transition-colors"
                 >
                   <X className="h-4 w-4" />
                 </button>

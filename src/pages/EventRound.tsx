@@ -393,7 +393,7 @@ export default function EventRound() {
         setShortcutsOpen((v) => !v);
       } else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
-        setLeaderboardOpen((v) => !v);
+setLeaderboardOpen((v) => !v);
       } else if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
         setQuestionPanelOpen((v) => !v);
@@ -1152,7 +1152,7 @@ export default function EventRound() {
                     {/* Team info */}
                     <div className="min-w-0 flex-1">
                       <h3 className="text-base font-bold text-white truncate">{team.name}</h3>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{team.lead}</p>
+                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{team.lead}</p>
                     </div>
 
                     {/* Scores */}
