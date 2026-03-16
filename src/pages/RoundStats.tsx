@@ -87,7 +87,7 @@ export default function RoundStats() {
     const fetchData = async () => {
       setLoading(true);
 
-      const [eventRes, roundRes, teamsRes, roundScoresRes, allScoresRes, allRoundsRes] = await Promise.all([
+      const [_, roundRes, teamsRes, roundScoresRes, allScoresRes, allRoundsRes] = await Promise.all([
         supabase.from('events').select('*').eq('id', eventId).single(),
         supabase.from('rounds').select('*').eq('id', roundId).single(),
         supabase.from('teams').select('*').eq('event_id', eventId),
@@ -96,7 +96,7 @@ export default function RoundStats() {
         supabase.from('rounds').select('*').eq('event_id', eventId).order('round_number', { ascending: true }),
       ]);
 
-      setEventData(eventRes.data);
+      // setEventData(eventRes.data); // Removed: eventData is not declared or used
 
       const roundData = roundRes.data as Round | null;
       const teamsData = (teamsRes.data as Team[]) || [];
