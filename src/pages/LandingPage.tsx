@@ -706,7 +706,7 @@ export default function LandingPage() {
             <motion.span
               animate={{ boxShadow: ["0 0 0 rgba(16,185,129,0)", "0 0 12px rgba(16,185,129,0.3)", "0 0 0 rgba(16,185,129,0)"] }}
               transition={{ duration: 2, repeat: Infinity }}
-              className="inline-block px-3 py-1 mb-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold tracking-wide uppercase"
+              className="inline-block px-3 py-1 mb-3 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold tracking-wide uppercase absolute right-0 mr-3"
             >
               Live Quiz
             </motion.span>
