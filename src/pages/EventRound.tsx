@@ -125,6 +125,10 @@ export default function EventRound() {
   const [tiebreakerMode, setTiebreakerMode] = useState(false);
   const [tiebreakerTeamIds, setTiebreakerTeamIds] = useState<Set<string>>(new Set());
 
+  // ---- Final Results Modal state ----
+  const [showFinalResultsModal, setShowFinalResultsModal] = useState(false);
+  const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
+
   // ---- Refs ----
   const autoCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -422,6 +426,12 @@ export default function EventRound() {
       setUndoing(false);
     }
   }, [lastAction, eventId, event, undoing, showFeedback]);
+
+  // ---- Calculate incomplete rounds for final results modal ----
+  useEffect(() => {
+    const incomplete = rounds.filter((r) => r.status !== 'completed');
+    setIncompleteRounds(incomplete);
+  }, [rounds]);
 
   // ---- Keyboard shortcuts ----
   useEffect(() => {
@@ -943,18 +953,17 @@ setLeaderboardOpen((v) => !v);
     
     if (isLastRound) {
       // Check if all rounds are completed before going to final stats
-      const allRoundsCompleted = rounds.every((r) => r.status === 'completed');
-      
-      if (!allRoundsCompleted) {
-        showFeedback('Cannot view final results: not all rounds are completed');
-        return;
+      if (incompleteRounds.length > 0) {
+        // Show modal with incomplete rounds warning
+        setShowFinalResultsModal(true);
+      } else {
+        // All rounds completed, navigate directly
+        navigate(`/events/${eventId}/final-stats`);
       }
-      
-      navigate(`/events/${eventId}/final-stats`);
     } else {
       navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
     }
-  }, [eventId, currentRound, isLastRound, rounds, navigate, showFeedback]);
+  }, [eventId, currentRound, isLastRound, incompleteRounds.length, navigate]);
 
   // ---- Start tiebreaker ----
   const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
@@ -969,6 +978,32 @@ setLeaderboardOpen((v) => !v);
     setTiebreakerTeamIds(new Set());
     autoCompleteRound();
   }, [autoCompleteRound]);
+
+  // ---- Confirm final results (mark incomplete rounds as completed) ----
+  const handleConfirmFinalResults = useCallback(async () => {
+    if (!eventId) return;
+    try {
+      setSubmitting(true);
+      
+      // Mark event as completed
+      await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
+      
+      // Mark all incomplete rounds as completed
+      await Promise.all(
+        incompleteRounds.map((r) =>
+          supabase.from('rounds').update({ status: 'completed' }).eq('id', r.id)
+        )
+      );
+      
+      setShowFinalResultsModal(false);
+      navigate(`/events/${eventId}/final-stats`);
+    } catch (err) {
+      console.error('Error confirming final results:', err);
+      showFeedback('Failed to confirm final results');
+    } finally {
+      setSubmitting(false);
+    }
+  }, [eventId, incompleteRounds, navigate, showFeedback]);
 
   // ---- Loading / Error states ----
   if (loading) {
@@ -1838,6 +1873,106 @@ setLeaderboardOpen((v) => !v);
                 </div>
               ))}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================================================================== */}
+      {/*  FINAL RESULTS CONFIRMATION MODAL                                  */}
+      {/* ================================================================== */}
+      <AnimatePresence>
+        {showFinalResultsModal && (
+          <motion.div
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setShowFinalResultsModal(false)}
+          >
+            <motion.div
+              variants={modalVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-lg rounded-2xl border border-white/[0.08] bg-slate-900/95 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="flex items-center justify-between border-b border-white/[0.06] px-6 py-4">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-5 w-5 text-amber-400" />
+                  <h3 className="text-lg font-bold">Incomplete Rounds</h3>
+                </div>
+                <button
+                  onClick={() => setShowFinalResultsModal(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <div className="flex border-b border-white/[0.06]">
+                <div className="flex-1 border-r border-white/[0.06] px-4 py-3">
+                  <p className="text-xs text-slate-500 font-medium">ROUND</p>
+                </div>
+              </div>
+
+              <div className="max-h-[300px] overflow-y-auto p-4 space-y-2">
+                {incompleteRounds.length > 0 ? (
+                  incompleteRounds.map((round) => (
+                    <div
+                      key={round.id}
+                      className="flex items-center gap-4 rounded-xl border bg-white/[0.02] border-white/[0.06] px-4 py-3"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-white">{round.round_name}</p>
+                        <p className="text-sm text-slate-400">Round {round.round_number}</p>
+                      </div>
+                      <span className="rounded-lg bg-yellow-500/20 px-2.5 py-1 text-xs font-semibold text-yellow-300">
+                        {round.status === 'pending' ? 'Pending' : 'Active'}
+                      </span>
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-4 text-slate-400">No incomplete rounds</div>
+                )}
+              </div>
+
+              <div className="border-t border-white/[0.06] px-6 py-4">
+                <div className="mb-4 rounded-lg bg-amber-500/10 border border-amber-500/20 p-3">
+                  <p className="text-sm text-amber-300">
+                    <span className="font-semibold">Note:</span> Clicking "Skip to Final Results" will automatically mark all remaining rounds as completed.
+                  </p>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowFinalResultsModal(false)}
+                    className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-slate-400 hover:bg-white/[0.06] transition-colors"
+                  >
+                    Back
+                  </button>
+                  <motion.button
+                    whileHover={{ scale: 1.02 }}
+                    whileTap={{ scale: 0.98 }}
+                    onClick={handleConfirmFinalResults}
+                    disabled={submitting}
+                    className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 py-2.5 text-sm font-semibold text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Processing...
+                      </>
+                    ) : (
+                      <>
+                        <BarChart3 className="h-4 w-4" />
+                        Skip to Final Results
+                      </>
+                    )}
+                  </motion.button>
+                </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
