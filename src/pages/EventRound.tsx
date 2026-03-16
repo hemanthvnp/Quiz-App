@@ -841,18 +841,12 @@ setLeaderboardOpen((v) => !v);
         showFeedback(`Round completed! Now on ${nextNonCompletedRound.round_name}`);
         navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
       } else {
-        // 3b. All rounds completed - mark event as completed and go to final stats
-        await supabase
-          .from('events')
-          .update({ status: 'completed' })
-          .eq('id', eventId);
-
+        // Always go to round stats after completion (no auto final results)
         setRounds((prev) =>
           prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
         );
-        setEvent((prev) => (prev ? { ...prev, status: 'completed' } : prev));
-        showFeedback('All rounds completed! Going to final results...');
-        navigate(`/events/${eventId}/final-stats`);
+        showFeedback('Round completed! View stats or switch rounds.');
+        navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
       }
     } catch (err: unknown) {
       showFeedback(`Error: ${err instanceof Error ? err.message : 'Failed to complete round'}`);
