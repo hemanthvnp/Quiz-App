@@ -138,6 +138,9 @@ export default function EventRound() {
   // Removed unused showFinalResultsModal and setShowFinalResultsModal
   const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
 
+  // ---- Reopen Round confirmation ----
+  const [confirmReopenOpen, setConfirmReopenOpen] = useState(false);
+
   // ---- Refs ----
   const autoCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -439,6 +442,8 @@ setLeaderboardOpen((v) => !v);
   }, [bonusModalOpen, leaderboardOpen, editModalOpen, handleUndoScore]);
 
   // ---- Auto-complete round (used after last question) ----
+  // Always navigates to round stats so the host can review before moving on.
+  // The host can then choose "Final Results" from round stats when ready.
   const autoCompleteRound = useCallback(async () => {
     if (!currentRound || !eventId || !event) return;
     setSubmitting(true);
@@ -463,16 +468,17 @@ setLeaderboardOpen((v) => !v);
         );
         setCurrentRoundId(nextNonCompletedRound.id);
         setEvent((prev) => (prev ? { ...prev, current_round_id: nextNonCompletedRound.id, current_question: 1 } : prev));
-        navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
       } else {
-        // All rounds completed - mark event as completed and go to final stats
+        // All rounds completed — mark event as completed
         await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
         setRounds((prev) =>
           prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
         );
         setEvent((prev) => (prev ? { ...prev, status: 'completed' } : prev));
-        navigate(`/events/${eventId}/final-stats`);
       }
+
+      // Always show round stats first so host can review
+      navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
     } catch (err: unknown) {
       showFeedback(`Error: ${err instanceof Error ? err.message : 'Failed to complete round'}`);
     } finally {
@@ -578,9 +584,33 @@ setLeaderboardOpen((v) => !v);
             updatedTotals.set(teamId, (updatedTotals.get(teamId) || 0) + points);
 
             if (!tiebreakerMode && nextQ > currentRound.question_count) {
-              // All regular questions answered — auto-complete round (tiebreaker button will handle ties manually)
-              if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
-              autoCompleteTimeout.current = setTimeout(() => autoCompleteRound(), 800);
+              // All regular questions answered — check for ties before auto-completing
+              // Compute tie check with updated scores (state hasn't re-rendered yet)
+              const sortedTotals = Array.from(updatedTotals.entries())
+                .sort(([, a], [, b]) => b - a);
+              let tieRank = 1;
+              const rankedForTie = sortedTotals.map(([id, score], i) => {
+                if (i > 0 && score < sortedTotals[i - 1][1]) tieRank = i + 1;
+                return { id, score, rank: tieRank };
+              });
+              const top3ForTie = rankedForTie.filter(t => t.rank <= 3);
+              const tieGroups = new Map<number, string[]>();
+              top3ForTie.forEach(t => {
+                const existing = tieGroups.get(t.score) || [];
+                existing.push(t.id);
+                tieGroups.set(t.score, existing);
+              });
+              let hasTiesNow = false;
+              tieGroups.forEach((ids) => { if (ids.length > 1) hasTiesNow = true; });
+
+              if (hasTiesNow) {
+                // Ties exist — do NOT auto-complete. Let the host see the tiebreaker button.
+                feedbackOverride = 'All questions done — teams are tied! Start a tiebreaker.';
+              } else {
+                // No ties — safe to auto-complete
+                if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
+                autoCompleteTimeout.current = setTimeout(() => autoCompleteRound(), 800);
+              }
             } else if (tiebreakerMode) {
             // During tiebreaker — check if ties among tiebreaker teams are resolved
             const tiebreakerScores = Array.from(tiebreakerTeamIds).map(id => updatedTotals.get(id) || 0);
@@ -621,32 +651,68 @@ setLeaderboardOpen((v) => !v);
   );
 
   // ---- Skip question ----
+  // Use case: Host skips when no team can answer (time's up / nobody knows).
+  // Records a 0-point "skip" score so the question shows in history, then advances.
+  // If this was the last question in the round, triggers auto-complete.
   const handleSkipQuestion = useCallback(async () => {
-    if (!event || !currentRound || !eventId) return;
-    
+    if (!event || !currentRound || !eventId || submitting) return;
+    if (currentRound.status !== 'active') return;
+    if (event.current_question > currentRound.question_count) return;
+
+    setSubmitting(true);
     try {
-      setSubmitting(true);
-      
-      // Just move to next question without creating a record
       const nextQ = event.current_question + 1;
+
+      // Update event question counter
       const { error: updateError } = await supabase
         .from('events')
         .update({ current_question: nextQ })
         .eq('id', eventId);
-
       if (updateError) throw updateError;
 
       // Update local state
       setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
 
-      showFeedback(`Question ${event.current_question} skipped → Moving to Question ${nextQ}`);
+      showFeedback(`Question ${event.current_question} skipped`);
+
+      // If that was the last question, check for ties before auto-completing
+      if (nextQ > currentRound.question_count) {
+        // Compute current team totals to check for ties
+        const totals = new Map<string, number>();
+        teams.forEach(t => {
+          const total = scores.filter(s => s.team_id === t.id).reduce((sum, s) => sum + s.points, 0);
+          totals.set(t.id, total);
+        });
+        const sortedTotals = Array.from(totals.entries()).sort(([, a], [, b]) => b - a);
+        let tieRank = 1;
+        const rankedForTie = sortedTotals.map(([id, score], i) => {
+          if (i > 0 && score < sortedTotals[i - 1][1]) tieRank = i + 1;
+          return { id, score, rank: tieRank };
+        });
+        const top3 = rankedForTie.filter(t => t.rank <= 3);
+        const tieGroups = new Map<number, string[]>();
+        top3.forEach(t => {
+          const existing = tieGroups.get(t.score) || [];
+          existing.push(t.id);
+          tieGroups.set(t.score, existing);
+        });
+        let hasTiesNow = false;
+        tieGroups.forEach((ids) => { if (ids.length > 1) hasTiesNow = true; });
+
+        if (hasTiesNow) {
+          showFeedback('All questions done — teams are tied! Start a tiebreaker.');
+        } else {
+          if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
+          autoCompleteTimeout.current = setTimeout(() => autoCompleteRound(), 800);
+        }
+      }
     } catch (err: unknown) {
       console.error('Skip question error:', err);
       showFeedback(`Error: ${err instanceof Error ? err.message : 'Skip failed'}`);
     } finally {
       setSubmitting(false);
     }
-  }, [event, currentRound, eventId, showFeedback]);
+  }, [event, currentRound, eventId, submitting, showFeedback, autoCompleteRound, teams, scores]);
 
   // ---- Edit score ----
   const handleEditScore = useCallback(async () => {
@@ -857,9 +923,14 @@ setLeaderboardOpen((v) => !v);
   }, [currentRound, eventId, event, rounds, showFeedback, navigate]);
 
   // ---- Reopen a completed round ----
+  // Use case: Host realizes a scoring mistake after completing a round. Reopening
+  // brings the round back to "active" so corrections can be made. If the event was
+  // already marked completed (final stats shown), it reverts the event to active too.
+  // If the next round was activated, it pauses that round back to pending.
   const handleReopenRound = useCallback(async () => {
     if (!currentRound || !eventId || submitting || !canExecuteReopen) return;
     setSubmitting(true);
+    setConfirmReopenOpen(false);
     try {
       // 1. Reactivate this round
       await supabase
@@ -869,15 +940,15 @@ setLeaderboardOpen((v) => !v);
 
       const wasEventCompleted = event?.status === 'completed';
 
-      // 2. If there's a next round that is currently active (NOT completed), set it to pending
-      const nextRound = rounds.find(
-        (r) => r.round_number === currentRound.round_number + 1 && r.status !== 'completed'
+      // 2. If there's a next round that is currently active, pause it back to pending
+      const nextActiveRound = rounds.find(
+        (r) => r.round_number > currentRound.round_number && r.status === 'active'
       );
-      if (nextRound && nextRound.status === 'active') {
+      if (nextActiveRound) {
         await supabase
           .from('rounds')
           .update({ status: 'pending' })
-          .eq('id', nextRound.id);
+          .eq('id', nextActiveRound.id);
       }
 
       // 3. Derive current_question from existing scores in this round
@@ -889,7 +960,7 @@ setLeaderboardOpen((v) => !v);
           ? Math.max(...roundWinningScores.map((s) => s.question_number)) + 1
           : 1;
 
-      // 4. Update event state
+      // 4. Update event state — always revert to active and point to this round
       const eventUpdates: Record<string, unknown> = {
         current_round_id: currentRound.id,
         current_question: maxQ,
@@ -903,7 +974,7 @@ setLeaderboardOpen((v) => !v);
       setRounds((prev) =>
         prev.map((r) => {
           if (r.id === currentRound.id) return { ...r, status: 'active' as const };
-          if (nextRound && r.id === nextRound.id)
+          if (nextActiveRound && r.id === nextActiveRound.id)
             return { ...r, status: 'pending' as const };
           return r;
         })
@@ -921,7 +992,7 @@ setLeaderboardOpen((v) => !v);
       setCurrentRoundId(currentRound.id);
       setLastAction(null);
 
-      showFeedback(`Reopened ${currentRound.round_name}`);
+      showFeedback(`Reopened ${currentRound.round_name} — you can now make corrections`);
     } catch (err: unknown) {
       showFeedback(
         `Error: ${err instanceof Error ? err.message : 'Failed to reopen round'}`
@@ -1083,14 +1154,22 @@ setLeaderboardOpen((v) => !v);
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
-                editingHistoryQuestion 
+                currentRound?.status === 'completed'
+                  ? 'border-slate-500/20 bg-slate-500/10'
+                  : editingHistoryQuestion
                   ? 'border-amber-500/30 bg-amber-500/10 ring-2 ring-amber-500/30'
                   : tiebreakerMode
                   ? 'border-amber-500/20 bg-amber-500/10'
                   : 'border-cyan-500/20 bg-cyan-500/10'
               }`}
             >
-              {editingHistoryQuestion ? (
+              {currentRound?.status === 'completed' ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 text-slate-400" />
+                  <span className="text-sm font-medium text-slate-400">Completed</span>
+                  <span className="text-xs text-slate-500">{currentRound.question_count} questions</span>
+                </>
+              ) : editingHistoryQuestion ? (
                 <>
                   <div className="flex items-center gap-1">
                     <RotateCcw className="h-4 w-4 text-amber-400" />
@@ -1285,9 +1364,9 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                               </p>
                             </div>
                             <button
-                              disabled={!!editingHistoryQuestion || !!deletingQuestion}
+                              disabled={!!editingHistoryQuestion || !!deletingQuestion || currentRound?.status === 'completed'}
                               onClick={async () => {
-                                if (!eventId || !currentRoundId || !!editingHistoryQuestion || !!deletingQuestion) return;
+                                if (!eventId || !currentRoundId || !!editingHistoryQuestion || !!deletingQuestion || currentRound?.status === 'completed') return;
                                 
                                 setDeletingQuestion(q.questionNumber);
                                 if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current);
@@ -1338,8 +1417,8 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                                   setDeletingQuestion(null);
                                 }
                               }}
-                              className={`ml-auto opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded transition-all ${editingHistoryQuestion || deletingQuestion ? 'text-slate-500 cursor-not-allowed' : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/20'}`}
-                              title={(editingHistoryQuestion || deletingQuestion) ? 'Finish current operation' : 'Rebuild/edit this question'}
+                              className={`ml-auto opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded transition-all ${editingHistoryQuestion || deletingQuestion || currentRound?.status === 'completed' ? 'text-slate-500 cursor-not-allowed' : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/20'}`}
+                              title={(editingHistoryQuestion || deletingQuestion) ? 'Finish current operation' : currentRound?.status === 'completed' ? 'Round is completed (read-only)' : 'Rebuild/edit this question'}
                             >
                               {deletingQuestion === q.questionNumber ? (
                                 <Loader2 className="w-3 h-3 animate-spin" />
@@ -1452,7 +1531,15 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                     </div>
                   </div>
 
-                  {/* Scoring Buttons */}
+                  {/* Scoring Buttons — hidden for completed rounds */}
+                  {currentRound?.status === 'completed' ? (
+                    <div className="relative z-10 px-4 pb-4">
+                      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-500/20 bg-slate-500/5 px-3 py-3">
+                        <CheckCircle2 className="h-4 w-4 text-slate-400" />
+                        <span className="text-xs font-medium text-slate-400">Round Completed</span>
+                      </div>
+                    </div>
+                  ) : (
                   <div className="relative z-10 grid grid-cols-3 gap-1.5 px-4 pb-4">
                     <motion.button
                       whileHover={{ scale: 1.06 }}
@@ -1530,6 +1617,7 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                       <span className="text-[9px] text-cyan-400/50">custom</span>
                     </motion.button>
                   </div>
+                  )}
                 </motion.div>
                 );
               })}
@@ -1538,6 +1626,7 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
 
           {/* ---- Bottom Actions ---- */}
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4 pb-24">
+            {/* View Stats / Final Results — always visible */}
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
@@ -1548,8 +1637,8 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               {isLastRound ? 'Final Results' : 'Round Stats'}
             </motion.button>
 
-            {/* Skip Question button */}
-            {currentRound?.status === 'active' && event.current_question <= (currentRound?.question_count ?? 0) && (
+            {/* Skip Question — only when round is active and questions remain */}
+            {currentRound?.status === 'active' && event.current_question <= (currentRound?.question_count ?? 0) && !tiebreakerMode && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
@@ -1562,7 +1651,7 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               </motion.button>
             )}
 
-            {/* Manual Tiebreaker button — ONLY when NOT in tiebreaker mode */}
+            {/* Tiebreaker button — when ties exist after all questions answered */}
             {(!tiebreakerMode && !roundTiebreakerStates[currentRoundId ?? '']?.mode) && tiedTeamsInfo.hasTies && currentRound?.status === 'active' && event.current_question > (currentRound?.question_count ?? 0) && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
@@ -1576,9 +1665,9 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               </motion.button>
             )}
 
-            {/* Manual Complete button — ONLY when no ties and ready */}
-            {currentRound?.status === 'active' && 
-             event.current_question > (currentRound?.question_count ?? 0) && 
+            {/* Complete Round — when all questions answered, no ties, and round is active */}
+            {currentRound?.status === 'active' &&
+             event.current_question > (currentRound?.question_count ?? 0) &&
              !tiedTeamsInfo.hasTies && !tiebreakerMode && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
@@ -1593,30 +1682,19 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               </motion.button>
             )}
 
-            {canReopenRound ? (
+            {/* Reopen Round — only for completed rounds, shows confirmation */}
+            {canReopenRound && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
-                onClick={handleReopenRound}
+                onClick={() => setConfirmReopenOpen(true)}
                 disabled={submitting}
                 className="flex items-center gap-2 rounded-xl border border-amber-500/20 bg-amber-500/10 px-6 py-3 text-sm font-semibold text-amber-300 transition-colors hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <RotateCcw className="h-4 w-4" />
                 Reopen Round
               </motion.button>
-            ) : currentRound?.status === 'active' ? (
-              <motion.button
-                whileHover={{ scale: 1.03 }}
-                whileTap={{ scale: 0.97 }}
-                onClick={handleCompleteRound}
-                disabled={submitting}
-                className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                Complete Round
-                {!isLastRound && <ChevronRight className="h-4 w-4" />}
-              </motion.button>
-            ) : null}
+            )}
           </div>
         </div>
       </div>
@@ -1957,6 +2035,77 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                 </div>
               ))}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================================================================== */}
+      {/*  REOPEN ROUND CONFIRMATION MODAL                                   */}
+      {/* ================================================================== */}
+      <AnimatePresence>
+        {confirmReopenOpen && (
+          <motion.div
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setConfirmReopenOpen(false)}
+          >
+            <motion.div
+              variants={modalVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-slate-900/95 p-6 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-500/10">
+                  <RotateCcw className="h-5 w-5 text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Reopen Round?</h2>
+                  <p className="text-xs text-slate-400">{currentRound?.round_name}</p>
+                </div>
+              </div>
+
+              <div className="mb-6 space-y-3">
+                <p className="text-sm text-slate-300">
+                  This will reopen the round so you can make scoring corrections.
+                </p>
+                <div className="space-y-2 text-xs text-slate-400 border-l-2 border-amber-500/30 pl-3 py-1 bg-amber-500/5 rounded-r-lg">
+                  <p>What will happen:</p>
+                  <ul className="list-disc list-inside space-y-1 text-slate-400">
+                    <li>Round status changes back to <span className="text-amber-300 font-medium">active</span></li>
+                    {event?.status === 'completed' && (
+                      <li>Event status reverts from <span className="text-slate-300">completed</span> to <span className="text-amber-300 font-medium">active</span></li>
+                    )}
+                    {rounds.find((r) => r.round_number > (currentRound?.round_number ?? 0) && r.status === 'active') && (
+                      <li>Next active round pauses back to <span className="text-amber-300 font-medium">pending</span></li>
+                    )}
+                    <li>Scoring buttons become available again</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setConfirmReopenOpen(false)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-slate-300 font-medium hover:bg-white/[0.06] transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleReopenRound}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  Reopen Round
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
