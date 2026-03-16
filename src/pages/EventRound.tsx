@@ -1168,7 +1168,7 @@ setLeaderboardOpen((v) => !v);
                       </motion.div>
                       <div className="flex items-center gap-1">
                         <span className="text-xs font-semibold text-cyan-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
-                        <span className="text-[10px] text-slate-600">this round</span>
+                        <span className="text-[10px] text-slate-400">this round</span>
                       </div>
                     </div>
                   </div>

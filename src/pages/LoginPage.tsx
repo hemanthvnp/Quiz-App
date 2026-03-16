@@ -38,7 +38,17 @@ export default function LoginPage() {
         className="w-full max-w-sm relative z-10"
       >
         {/* Card */}
-        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-8">
+        <div className="rounded-2xl border border-white/[0.08] bg-white/[0.03] backdrop-blur-xl p-8 relative">
+          {/* Exit button */}
+          <motion.button
+            onClick={() => navigate('/')}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="p-1.5 rounded-lg text-slate-100 hover:text-white hover:bg-white/70 transition-colors absolute top-4 right-4 z-20"
+            aria-label="Exit to landing page"
+          >
+            <X className="w-4 h-4" />
+          </motion.button>
           {/* Branding */}
           <div className="text-center mb-8">
             <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-cyan-500/10 mb-4">
