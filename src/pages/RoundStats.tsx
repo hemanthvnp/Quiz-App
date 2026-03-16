@@ -74,6 +74,9 @@ export default function RoundStats() {
   const [questionDetails, setQuestionDetails] = useState<QuestionDetail[]>([]);
   const [eventData, setEventData] = useState<any | null>(null);
   const [nextRoundId, setNextRoundId] = useState<string | null>(null);
+  const [allRounds, setAllRounds] = useState<Round[]>([]);
+  const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
+  const [showFinalResultsModal, setShowFinalResultsModal] = useState(false);
   const [loading, setLoading] = useState(true);
 
   const isEventCompleted = eventData?.status === 'completed';
@@ -169,10 +172,17 @@ export default function RoundStats() {
         }));
       setQuestionDetails(qDetails);
 
-      // Next round
+      // Store all rounds and calculate incomplete rounds
+      setAllRounds(allRounds);
+      const incomplete = allRounds.filter((r) => r.status !== 'completed');
+      setIncompleteRounds(incomplete);
+
+      // Next round - navigate to event round if next is not completed, to stats if completed
       if (roundData && allRounds.length > 0) {
         const currentIdx = allRounds.findIndex((r) => r.id === roundId);
-        setNextRoundId(currentIdx >= 0 && currentIdx < allRounds.length - 1 ? allRounds[currentIdx + 1].id : null);
+        if (currentIdx >= 0 && currentIdx < allRounds.length - 1) {
+          setNextRoundId(allRounds[currentIdx + 1].id);
+        }
       }
 
       setLoading(false);
@@ -180,6 +190,43 @@ export default function RoundStats() {
 
     fetchData();
   }, [eventId, roundId]);
+
+  const handleNextRound = () => {
+    if (!nextRoundId) return;
+    const nextRound = allRounds.find((r) => r.id === nextRoundId);
+    if (!nextRound) return;
+
+    // If next round is completed, go to stats; otherwise go to event round
+    if (nextRound.status === 'completed') {
+      navigate(`/events/${eventId}/rounds/${nextRoundId}/stats`);
+    } else {
+      navigate(`/events/${eventId}/rounds`);
+    }
+  };
+
+  const handleFinalResults = () => {
+    setShowFinalResultsModal(true);
+  };
+
+  const handleConfirmFinalResults = async () => {
+    // Mark all incomplete rounds as completed and complete the event
+    try {
+      // Update event status to completed
+      await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
+
+      // Mark all incomplete rounds as completed
+      await Promise.all(
+        incompleteRounds.map((r) =>
+          supabase.from('rounds').update({ status: 'completed' }).eq('id', r.id)
+        )
+      );
+
+      setShowFinalResultsModal(false);
+      navigate(`/events/${eventId}/final-stats`);
+    } catch (err) {
+      console.error('Error completing event:', err);
+    }
+  };
 
   if (loading) return <LoadingScreen message="Loading round stats..." />;
 
@@ -214,7 +261,7 @@ export default function RoundStats() {
             </button>
             {nextRoundId && (
               <button
-                onClick={() => navigate(`/events/${eventId}/rounds/${nextRoundId}/stats`)}
+                onClick={handleNextRound}
                 className="px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-sm font-medium text-white transition-colors flex items-center gap-2"
               >
                 Next Round
@@ -380,17 +427,15 @@ export default function RoundStats() {
           </button>
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate(`/events/${eventId}/final-stats`)}
-              disabled={!isEventCompleted}
-              className={`px-5 py-3 rounded-xl border font-medium transition-colors flex items-center gap-2 text-sm ${isEventCompleted ? 'border-white/[0.08] bg-white/[0.03] text-slate-300 hover:bg-white/[0.06]' : 'border-slate-500/30 bg-slate-800/50 text-slate-500 cursor-not-allowed'}`}
-              title={!isEventCompleted ? 'Event must be completed first' : ''}
+              onClick={handleFinalResults}
+              className="px-5 py-3 rounded-xl border border-white/[0.08] bg-white/[0.03] text-slate-300 font-medium transition-colors hover:bg-white/[0.06] flex items-center gap-2 text-sm"
             >
               <Trophy className="w-4 h-4" />
               Final Results
             </button>
             {nextRoundId && (
               <button
-                onClick={() => navigate(`/events/${eventId}/rounds/${nextRoundId}/stats`)}
+                onClick={handleNextRound}
                 className="px-6 py-3 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors flex items-center gap-2"
               >
                 Next Round
@@ -399,6 +444,70 @@ export default function RoundStats() {
             )}
           </div>
         </motion.div>
+
+        {/* Final Results Confirmation Modal */}
+        {showFinalResultsModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.92, y: 20 }}
+              className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-slate-900/95 p-6 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-bold text-white">Go to Final Results?</h2>
+                <button
+                  onClick={() => setShowFinalResultsModal(false)}
+                  className="p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.06] rounded-lg transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="mb-6 space-y-4">
+                {incompleteRounds.length > 0 ? (
+                  <>
+                    <p className="text-sm text-amber-300 flex items-start gap-2">
+                      <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                      <span>
+                        The following rounds are not completed:
+                      </span>
+                    </p>
+                    <div className="ml-6 space-y-2">
+                      {incompleteRounds.map((r) => (
+                        <p key={r.id} className="text-sm text-slate-300">
+                          • {r.round_name}
+                        </p>
+                      ))}
+                    </div>
+                    <p className="text-sm text-red-300 border-l-2 border-red-500/50 pl-3 py-2 bg-red-500/10">
+                      <strong>Warning:</strong> Clicking "Skip to Final Results" will automatically mark all remaining rounds as completed and skip to final results without checking if questions are answered.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-300">
+                    All rounds are completed. You can now view the final results.
+                  </p>
+                )}
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setShowFinalResultsModal(false)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-slate-300 font-medium hover:bg-white/[0.06] transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={handleConfirmFinalResults}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors"
+                >
+                  {incompleteRounds.length > 0 ? 'Skip to Final Results' : 'View Final Results'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
       </main>
     </AppLayout>
   );
