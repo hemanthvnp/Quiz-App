@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+// Fix NodeJS namespace error
+import type { Timeout } from 'node:timers';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -131,10 +133,10 @@ export default function EventRound() {
 // ---- History Edit state ----
   const [editingHistoryQuestion, setEditingHistoryQuestion] = useState<{ targetQuestion: number; originalQuestion: number } | null>(null);
   const [deletingQuestion, setDeletingQuestion] = useState<number | null>(null);
-  const deleteTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const deleteTimeoutRef = useRef<Timeout | null>(null);
 
   // ---- Final Results Modal state ----
-  const [showFinalResultsModal, setShowFinalResultsModal] = useState(false);
+  // Removed unused showFinalResultsModal and setShowFinalResultsModal
   const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
 
   // ---- Refs ----
