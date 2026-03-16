@@ -104,17 +104,17 @@ function Petal({ delay, x }: { delay: number; x: string }) {
       <svg width="14" height="14" viewBox="0 0 16 16">
         <defs>
           <linearGradient id={`petal-${delay}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(244, 114, 182, 0.5)" />
+            <stop offset="0%" stopColor="rgba(244, 114, 182, 0.6)" />
             <stop offset="100%" stopColor="rgba(168, 85, 247, 0.3)" />
           </linearGradient>
         </defs>
-        <ellipse cx="8" cy="8" rx="4" ry="8" fill={`url(#petal-${delay})`} />
+        <ellipse cx="8" cy="8" rx="6" ry="8" fill={`url(#petal-${delay})`} />
       </svg>
     </motion.div>
   );
 }
 
-const petals = Array.from({ length: 18 }, (_, i) => ({ id: i, delay: Math.random() * 10, x: `${Math.random() * 100}%` }));
+const petals = Array.from({ length: 20 }, (_, i) => ({ id: i, delay: Math.random() * 6, x: `${Math.random() * 100}%` }));
 
 /* ================================================================== */
 /*  RUNNING MARQUEE                                                    */
@@ -133,7 +133,7 @@ function Marquee({ direction = 1, speed = 30 }: { direction?: number; speed?: nu
         transition={{ duration: speed, repeat: Infinity, ease: "linear" }}
       >
         {[...marqueeItems, ...marqueeItems].map((item, i) => (
-          <span key={i} className={item.length > 2 ? "text-slate-600 uppercase tracking-[0.2em]" : "text-pink-500/40"}>
+          <span key={i} className={item.length > 2 ? "text-slate-600 uppercase tracking-[0.2em]" : "text-pink-500/60 "}>
             {item}
           </span>
         ))}
@@ -310,7 +310,7 @@ function NpmInstallCredits() {
                 <div className="ml-4 flex items-center gap-3">
                   <div className="flex-1 h-1.5 rounded-full bg-slate-800 overflow-hidden">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-cyan-500 to-pink-500"
+                      className="h-full rounded-full bg-linear-to-r from-cyan-500 to-pink-500"
                       initial={{ width: "0%" }}
                       animate={step > idx ? { width: "100%" } : {}}
                       transition={{ duration: 0.8, delay: 0.1 }}
@@ -343,7 +343,7 @@ function NpmInstallCredits() {
             initial={{ opacity: 0 }}
             animate={step > packages.length - 1 ? { opacity: 1 } : {}}
             transition={{ delay: 0.3, duration: 0.5 }}
-            className="pt-2 border-t border-white/[0.06]"
+            className="pt-2 border-t border-white/6"
           >
             <span className="text-slate-500 text-xs">
               added <span className="text-white font-semibold">{packages.length} contributors</span> in <span className="text-white">0.3s</span>
@@ -525,7 +525,7 @@ export default function LandingPage() {
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <FloatingOrb color="rgba(139, 92, 246, 0.15)" size={500} x="-5%" y="-10%" delay={0} />
         <FloatingOrb color="rgba(236, 72, 153, 0.12)" size={400} x="65%" y="5%" delay={3} />
-        <FloatingOrb color="rgba(59, 130, 246, 0.08)" size={350} x="80%" y="60%" delay={6} />
+        <FloatingOrb color="rgba(59, 130, 246, 0.08)" size={350} x="80%" y="60%" delay={5} />
         <FloatingOrb color="rgba(244, 114, 182, 0.1)" size={300} x="10%" y="70%" delay={9} />
       </div>
 
@@ -536,12 +536,12 @@ export default function LandingPage() {
       }} />
 
       {/* Meteors */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-1">
         {meteors.map((m) => <Meteor key={m.id} delay={m.delay} />)}
       </div>
 
       {/* Petals */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden z-[1]">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden z-1">
         {petals.map((p) => <Petal key={p.id} {...p} />)}
       </div>
 
