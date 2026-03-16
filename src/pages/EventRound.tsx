@@ -133,8 +133,7 @@ export default function EventRound() {
 // ---- History Edit state ----
   const [editingHistoryQuestion, setEditingHistoryQuestion] = useState<{ targetQuestion: number; originalQuestion: number } | null>(null);
   const [deletingQuestion, setDeletingQuestion] = useState<number | null>(null);
-  const deleteTimeoutRef = useRef<Timeout | null>(null);
-  const deleteTimeoutRef = useRef<NodeTimeout | null>(null);
+  const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Final Results Modal state ----
   // Removed unused showFinalResultsModal and setShowFinalResultsModal
