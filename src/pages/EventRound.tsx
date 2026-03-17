@@ -101,6 +101,7 @@ export default function EventRound() {
   const [scoringFeedback, setScoringFeedback] = useState<string | null>(null);
   const [animatingTeamId, setAnimatingTeamId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
 
   // ---- Undo state ----
   const [lastAction, setLastAction] = useState<{
@@ -335,7 +336,10 @@ export default function EventRound() {
         (payload) => {
           if (payload.eventType === 'INSERT') {
             const newScore = payload.new as Score;
-            setScores((prev) => [...prev, newScore]);
+            setScores((prev) => {
+              if (prev.some((s) => s.id === newScore.id)) return prev;
+              return [...prev, newScore];
+            });
           } else if (payload.eventType === 'UPDATE') {
             const updated = payload.new as Score;
             setScores((prev) => prev.map((s) => (s.id === updated.id ? updated : s)));
@@ -489,7 +493,7 @@ setLeaderboardOpen((v) => !v);
   // ---- Scoring action ----
   const handleScore = useCallback(
     async (teamId: string, actionType: ActionType, customPoints?: number) => {
-      if (!event || !currentRound || !eventId || submitting || currentRound.status === 'completed') {
+      if (!event || !currentRound || !eventId || submittingRef.current || currentRound.status === 'completed') {
         if (currentRound?.status === 'completed') {
           showFeedback('Scoring disabled on completed rounds');
         }
@@ -502,6 +506,7 @@ setLeaderboardOpen((v) => !v);
         return;
       }
 
+      submittingRef.current = true;
       setSubmitting(true);
 
       let points = 0;
@@ -531,6 +536,7 @@ setLeaderboardOpen((v) => !v);
       // Block positive actions that advance question counter beyond limit (skip in tiebreaker mode)
       if (!tiebreakerMode && isPositive && event.current_question > currentRound.question_count) {
         showFeedback(`All ${currentRound.question_count} questions answered — complete the round`);
+        submittingRef.current = false;
         setSubmitting(false);
         return;
       }
@@ -539,6 +545,36 @@ setLeaderboardOpen((v) => !v);
       const maxTiebreakerQ = currentRound.question_count + (currentRound.tiebreaker_questions ?? 3);
       if (tiebreakerMode && isPositive && event.current_question > maxTiebreakerQ) {
         showFeedback(`All ${currentRound.tiebreaker_questions ?? 3} tiebreaker questions used — end tiebreaker`);
+        submittingRef.current = false;
+        setSubmitting(false);
+        return;
+      }
+
+      // ---- Duplicate action guard ----
+      const currentQuestionScores = scores.filter(
+        (s) => s.round_id === currentRound.id && s.question_number === event.current_question
+      );
+
+      // Guard 1: Block if a winner already exists for this question (only one team can win)
+      if (isPositive) {
+        const existingWinner = currentQuestionScores.find((s) => s.winning_team_id !== null);
+        if (existingWinner) {
+          const winnerTeam = teams.find((t) => t.id === existingWinner.winning_team_id);
+          showFeedback(`Q${event.current_question} already won by ${winnerTeam?.name ?? 'a team'}`);
+          submittingRef.current = false;
+          setSubmitting(false);
+          return;
+        }
+      }
+
+      // Guard 2: Block same team + same action type on the same question
+      const duplicateAction = currentQuestionScores.find(
+        (s) => s.team_id === teamId && s.action_type === actionType
+      );
+      if (duplicateAction) {
+        const team = teams.find((t) => t.id === teamId);
+        showFeedback(`${team?.name ?? 'Team'} already has ${actionType.replace('_', ' ')} on Q${event.current_question}`);
+        submittingRef.current = false;
         setSubmitting(false);
         return;
       }
@@ -644,10 +680,11 @@ setLeaderboardOpen((v) => !v);
       }} catch (err: unknown) {
         showFeedback(`Error: ${err instanceof Error ? err.message : 'Scoring failed'}`);
       } finally {
+        submittingRef.current = false;
         setSubmitting(false);
       }
     },
-    [event, currentRound, eventId, teams, scores, showFeedback, submitting, tiebreakerMode, tiebreakerTeamIds, autoCompleteRound]
+    [event, currentRound, eventId, teams, scores, showFeedback, tiebreakerMode, tiebreakerTeamIds, autoCompleteRound]
   );
 
   // ---- Skip question ----
@@ -655,10 +692,11 @@ setLeaderboardOpen((v) => !v);
   // Records a 0-point "skip" score so the question shows in history, then advances.
   // If this was the last question in the round, triggers auto-complete.
   const handleSkipQuestion = useCallback(async () => {
-    if (!event || !currentRound || !eventId || submitting) return;
+    if (!event || !currentRound || !eventId || submittingRef.current) return;
     if (currentRound.status !== 'active') return;
     if (event.current_question > currentRound.question_count) return;
 
+    submittingRef.current = true;
     setSubmitting(true);
     try {
       const nextQ = event.current_question + 1;
@@ -710,9 +748,10 @@ setLeaderboardOpen((v) => !v);
       console.error('Skip question error:', err);
       showFeedback(`Error: ${err instanceof Error ? err.message : 'Skip failed'}`);
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [event, currentRound, eventId, submitting, showFeedback, autoCompleteRound, teams, scores]);
+  }, [event, currentRound, eventId, showFeedback, autoCompleteRound, teams, scores]);
 
   // ---- Edit score ----
   const handleEditScore = useCallback(async () => {
@@ -928,7 +967,8 @@ setLeaderboardOpen((v) => !v);
   // already marked completed (final stats shown), it reverts the event to active too.
   // If the next round was activated, it pauses that round back to pending.
   const handleReopenRound = useCallback(async () => {
-    if (!currentRound || !eventId || submitting || !canExecuteReopen) return;
+    if (!currentRound || !eventId || submittingRef.current || !canExecuteReopen) return;
+    submittingRef.current = true;
     setSubmitting(true);
     setConfirmReopenOpen(false);
     try {
@@ -998,9 +1038,10 @@ setLeaderboardOpen((v) => !v);
         `Error: ${err instanceof Error ? err.message : 'Failed to reopen round'}`
       );
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [currentRound, eventId, event, rounds, scores, submitting, canExecuteReopen, showFeedback]);
+  }, [currentRound, eventId, event, rounds, scores, canExecuteReopen, showFeedback]);
 
   // ---- Navigate to stats ----
   const handleViewStats = useCallback(() => {
