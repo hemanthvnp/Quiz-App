@@ -9,6 +9,7 @@ import ViewEvents from './pages/ViewEvents';
 import ManageTeams from './pages/ManageTeams';
 import EventRound from './pages/EventRound';
 import RoundStats from './pages/RoundStats';
+import EditEvent from './pages/EditEvent';
 import FinalStats from './pages/FinalStats';
 import LiveLeaderboard from './pages/LiveLeaderboard';
 import NotFound from './pages/NotFound';
@@ -34,6 +35,7 @@ function App() {
           <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
           <Route path="/events/create" element={<ProtectedRoute><CreateEvent /></ProtectedRoute>} />
           <Route path="/events" element={<ProtectedRoute><ViewEvents /></ProtectedRoute>} />
+          <Route path="/events/:eventId/edit" element={<ProtectedRoute><EditEvent /></ProtectedRoute>} />
           <Route path="/events/:eventId/teams" element={<ProtectedRoute><ManageTeams /></ProtectedRoute>} />
           <Route path="/events/:eventId/rounds" element={<ProtectedRoute><EventRound /></ProtectedRoute>} />
           <Route path="/events/:eventId/rounds/:roundId/stats" element={<ProtectedRoute><RoundStats /></ProtectedRoute>} />

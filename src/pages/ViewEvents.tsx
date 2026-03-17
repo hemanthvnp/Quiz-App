@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Calendar, Users, Trophy, ArrowLeft, Plus, Clock, ChevronRight, Trash2 } from 'lucide-react';
+import { Calendar, Users, Trophy, ArrowLeft, Plus, Clock, ChevronRight, Trash2, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event } from '../types';
 import { AppLayout, AppHeader } from '../components/Layout';
@@ -156,6 +156,15 @@ export default function ViewEvents() {
                   >
                     <Users className="w-3.5 h-3.5" /> Manage Teams
                   </button>
+                  {ev.status !== 'completed' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); navigate(`/events/${ev.id}/edit`); }}
+                      className="flex items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.02] hover:bg-cyan-500/10 hover:border-cyan-500/20 p-1.5 text-slate-500 hover:text-cyan-400 transition-colors"
+                      title="Edit event"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                   <button
                     onClick={(e) => { e.stopPropagation(); setDeleteConfirm(ev.id); }}
                     className="flex items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.02] hover:bg-red-500/10 hover:border-red-500/20 p-1.5 text-slate-500 hover:text-red-400 transition-colors"
