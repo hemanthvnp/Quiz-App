@@ -28,6 +28,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { getCache, setCache, CacheKeys } from '../lib/cache';
 import type { Event, Round, Team, Score, TeamWithScores, ActionType } from '../types';
 import { AppLayout } from '../components/Layout';
 
@@ -337,6 +338,23 @@ export default function EventRound() {
   // ---- Data fetching ----
   const fetchData = useCallback(async () => {
     if (!eventId) return;
+
+    // Try to load from cache first for instant display
+    const cachedEvent = getCache<Event>(CacheKeys.event(eventId));
+    const cachedRounds = getCache<Round[]>(CacheKeys.rounds(eventId));
+    const cachedTeams = getCache<Team[]>(CacheKeys.teams(eventId));
+    const cachedScores = getCache<Score[]>(CacheKeys.scores(eventId));
+
+    if (cachedEvent && cachedRounds && cachedTeams) {
+      setEvent(cachedEvent);
+      setRounds(cachedRounds);
+      setTeams(cachedTeams);
+      setScores(cachedScores || []);
+      setCurrentRoundId(cachedEvent.current_round_id ?? (cachedRounds.length > 0 ? cachedRounds[0].id : null));
+      setLoading(false);
+    }
+
+    // Fetch fresh data in background
     try {
       const [eventRes, roundsRes, teamsRes, scoresRes] = await Promise.all([
         supabase.from('events').select('*').eq('id', eventId).single(),
@@ -354,6 +372,12 @@ export default function EventRound() {
       const rds = (roundsRes.data ?? []) as Round[];
       const tms = (teamsRes.data ?? []) as Team[];
       const scs = (scoresRes.data ?? []) as Score[];
+
+      // Cache the fresh data
+      setCache(CacheKeys.event(eventId), ev);
+      setCache(CacheKeys.rounds(eventId), rds);
+      setCache(CacheKeys.teams(eventId), tms);
+      setCache(CacheKeys.scores(eventId), scs);
 
       setEvent(ev);
       setRounds(rds);
@@ -713,7 +737,12 @@ export default function EventRound() {
 
         if (insertError) throw insertError;
 
-        setScores((prev) => [...prev, insertedScore as Score]);
+        // Update local state and cache
+        setScores((prev) => {
+          const newScores = [...prev, insertedScore as Score];
+          setCache(CacheKeys.scores(eventId), newScores);
+          return newScores;
+        });
 
         let feedbackOverride: string | null = null;
 

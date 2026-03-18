@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Users, Trophy, ArrowLeft, Plus, Clock, ChevronRight, Trash2, Pencil } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { useCachedEvents, invalidateEventCache } from '../lib/useDataSync';
+import { clearCache, CacheKeys } from '../lib/cache';
 import type { Event } from '../types';
 import { AppLayout, AppHeader } from '../components/Layout';
 
@@ -35,23 +37,10 @@ function Badge({ status }: { status: Event['status'] }) {
 
 export default function ViewEvents() {
   const navigate = useNavigate();
-  const [events, setEvents] = useState<Event[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data: events, loading, error, refresh, isFromCache } = useCachedEvents();
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { data, error: e } = await supabase.from('events').select('*').order('date', { ascending: false });
-        if (e) throw e;
-        setEvents(data ?? []);
-      } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : 'Failed to load events.');
-      } finally { setLoading(false); }
-    })();
-  }, []);
+  const [localError, setLocalError] = useState<string | null>(null);
 
   const go = (ev: Event) => navigate(ev.status === 'completed' ? `/events/${ev.id}/final-stats` : `/events/${ev.id}/rounds`);
 
@@ -71,10 +60,13 @@ export default function ViewEvents() {
       await supabase.from('rounds').delete().eq('event_id', eventId);
       await supabase.from('events').delete().eq('id', eventId);
 
-      setEvents((prev) => prev.filter((e) => e.id !== eventId));
+      // Clear cache for this event and refresh events list
+      invalidateEventCache(eventId);
+      clearCache(CacheKeys.events());
+      await refresh();
       setDeleteConfirm(null);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to delete event.');
+      setLocalError(err instanceof Error ? err.message : 'Failed to delete event.');
     } finally {
       setDeleting(false);
     }
@@ -96,18 +88,26 @@ export default function ViewEvents() {
       </AppHeader>
 
       <main className="relative z-10 max-w-5xl mx-auto px-6 py-8">
-        {loading && (
+        {/* Cache indicator */}
+        {isFromCache && !loading && (
+          <div className="mb-4 flex items-center justify-center gap-2 text-xs text-slate-500">
+            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            Showing cached data, syncing...
+          </div>
+        )}
+
+        {loading && !events && (
           <div className="flex flex-col items-center py-32 gap-3">
             <div className="w-8 h-8 border-2 border-cyan-500/30 border-t-cyan-500 rounded-full animate-spin" />
             <p className="text-sm text-slate-400">Loading events...</p>
           </div>
         )}
 
-        {!loading && error && (
-          <div className="mx-auto max-w-md rounded-xl border border-red-500/20 bg-red-500/5 px-5 py-3 text-center text-sm text-red-400">{error}</div>
+        {(error || localError) && (
+          <div className="mx-auto max-w-md rounded-xl border border-red-500/20 bg-red-500/5 px-5 py-3 text-center text-sm text-red-400">{error || localError}</div>
         )}
 
-        {!loading && !error && events.length === 0 && (
+        {!loading && !error && (!events || events.length === 0) && (
           <div className="flex flex-col items-center py-32">
             <div className="mb-5 p-5 rounded-2xl bg-white/[0.03] border border-white/[0.06]">
               <Trophy className="w-10 h-10 text-slate-500" />
@@ -120,7 +120,7 @@ export default function ViewEvents() {
           </div>
         )}
 
-        {!loading && !error && events.length > 0 && (
+        {events && events.length > 0 && (
           <motion.div variants={container} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {events.map((ev) => (
               <motion.div key={ev.id} variants={card} className="group rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] transition-colors overflow-hidden">
@@ -204,7 +204,7 @@ export default function ViewEvents() {
             >
               <h3 className="text-lg font-bold text-white mb-2">Delete Event</h3>
               <p className="text-sm text-slate-400 mb-1">
-                Are you sure you want to delete <span className="text-white font-medium">{events.find((e) => e.id === deleteConfirm)?.name}</span>?
+                Are you sure you want to delete <span className="text-white font-medium">{events?.find((e) => e.id === deleteConfirm)?.name}</span>?
               </p>
               <p className="text-xs text-slate-500 mb-6">
                 This will permanently remove all rounds, teams, participants, and scores associated with this event.
