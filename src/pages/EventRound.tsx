@@ -1664,12 +1664,12 @@ export default function EventRound() {
                               setDeletingQuestion(null);
                             }
                           }}
-                          className={`ml-1 flex-shrink-0 flex items-center justify-center w-5 h-5 rounded transition-all ${
+                          className={`ml-1 flex-shrink-0 flex items-center justify-center w-5 h-5 rounded transition-all text-white${
                             editingHistoryQuestion || deletingQuestion || currentRound?.status === 'completed'
                               ? 'text-slate-500 cursor-not-allowed opacity-40'
                               : q.isSkipped
                               ? 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 opacity-60 hover:opacity-100'
-                              : 'text-amber-400 hover:text-amber-300 hover:bg-sky-500/20 opacity-0 group-hover/action:opacity-100'
+                              : 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 opacity-60 hover:opacity-100'
                           }`}
                           title={
                             editingHistoryQuestion || deletingQuestion
