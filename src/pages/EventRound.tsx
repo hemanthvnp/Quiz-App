@@ -137,6 +137,7 @@ export default function EventRound() {
   // When editingHistoryQuestion is set, the header badge and scoring are redirected
   // to targetQuestion. originalQuestion is where we return after saving.
   const [editingHistoryQuestion, setEditingHistoryQuestion] = useState<{ targetQuestion: number; originalQuestion: number } | null>(null);
+  const [editBackupScores, setEditBackupScores] = useState<Score[]>([]);
   const [deletingQuestion, setDeletingQuestion] = useState<number | null>(null);
   const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -826,7 +827,7 @@ export default function EventRound() {
       if (updateError) throw updateError;
 
       setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
-      showFeedback(`Question ${skippedQ} skipped — find it in History to re-attend`);
+      showFeedback(`Question ${skippedQ} skipped `);
 
       // If that was the last question, check for ties before auto-completing
       if (nextQ > currentRound.question_count) {
@@ -908,13 +909,28 @@ export default function EventRound() {
       setEvent((prev) =>
         prev ? { ...prev, current_question: editingHistoryQuestion.originalQuestion } : prev
       );
+
+      // Restore backed up scores
+      if (editBackupScores.length > 0) {
+        const { error } = await supabase
+          .from('scores')
+          .insert(editBackupScores);
+        if (!error) {
+          setScores(prev => [...prev, ...editBackupScores]);
+        }
+      }
+
       setEditingHistoryQuestion(null);
-      showFeedback('Edit cancelled — returned to current question');
-    } catch {
+      setEditBackupScores([]);
+      showFeedback('Edit cancelled — original scores restored');
+    } catch (err) {
+      console.error('Cancel edit failed:', err);
       // silently reset local state even if DB update fails
       setEditingHistoryQuestion(null);
+      setEditBackupScores([]);
+      showFeedback('Edit cancelled — returned to current question');
     }
-  }, [editingHistoryQuestion, eventId, showFeedback]);
+  }, [editingHistoryQuestion, eventId, showFeedback, editBackupScores]);
 
   // ---- Bonus submit ----
   const handleBonusSubmit = useCallback(() => {
@@ -1584,6 +1600,12 @@ export default function EventRound() {
                             try {
                               const originalQuestion = event!.current_question;
 
+                              // Backup scores before delete
+                              const scoresToBackup = scores.filter(
+                                (s) => s.round_id === currentRoundId && s.question_number === q.questionNumber
+                              );
+                              setEditBackupScores(scoresToBackup);
+
                               // Delete all scores for this question (including skip entries)
                               const { error: deleteError } = await supabase
                                 .from('scores')
@@ -1647,7 +1669,7 @@ export default function EventRound() {
                               ? 'text-slate-500 cursor-not-allowed opacity-40'
                               : q.isSkipped
                               ? 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 opacity-60 hover:opacity-100'
-                              : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/20 opacity-0 group-hover/action:opacity-100'
+                              : 'text-amber-400 hover:text-amber-300 hover:bg-sky-500/20 opacity-0 group-hover/action:opacity-100'
                           }`}
                           title={
                             editingHistoryQuestion || deletingQuestion
