@@ -646,10 +646,10 @@ export default function EventRound() {
           points = -Math.abs(currentRound.pounce_minus);
           break;
         case 'buzzer':
-          points = currentRound.bounce_points;
+          points = currentRound.buzzer_points ?? currentRound.bounce_points;
           break;
         case 'buzzer_minus':
-          points = -Math.abs(currentRound.bounce_points);
+          points = -Math.abs(currentRound.buzzer_points ?? currentRound.bounce_points);
           break;
         case 'bonus':
           points = customPoints ?? 0;
@@ -1810,67 +1810,78 @@ export default function EventRound() {
                         </div>
                       </div>
                     ) : (
-                      <div className="relative z-10 grid grid-cols-3 gap-1.5 px-4 pb-4">
-                        <motion.button
-                          whileHover={{ scale: 1.06 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleScore(team.id, 'bounce')}
-                          disabled={submitting}
-                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-emerald-300 transition-all hover:bg-emerald-500/20 hover:shadow-[0_0_12px_-3px_rgba(16,185,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Zap className="h-4 w-4" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Bounce</span>
-                          <span className="text-[9px] text-emerald-400/50">+{currentRound?.bounce_points ?? 0}</span>
-                        </motion.button>
+                      <div className={`relative z-10 grid ${currentRound?.round_type === 'buzzer' ? 'grid-cols-3' : 'grid-cols-2'} gap-1.5 px-4 pb-4`}>
+                        {/* Bounce & Pounce buttons - only show for bounce_pounce rounds */}
+                        {currentRound?.round_type === 'bounce_pounce' && (
+                          <>
+                            <motion.button
+                              whileHover={{ scale: 1.06 }}
+                              whileTap={{ scale: 0.92 }}
+                              onClick={() => handleScore(team.id, 'bounce')}
+                              disabled={submitting}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-emerald-300 transition-all hover:bg-emerald-500/20 hover:shadow-[0_0_12px_-3px_rgba(16,185,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Zap className="h-4 w-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Bounce</span>
+                              <span className="text-[9px] text-emerald-400/50">+{currentRound?.bounce_points ?? 0}</span>
+                            </motion.button>
 
-                        <motion.button
-                          whileHover={{ scale: 1.06 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleScore(team.id, 'pounce_plus')}
-                          disabled={submitting}
-                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-blue-500/10 border border-blue-500/20 px-2 py-2 text-blue-300 transition-all hover:bg-blue-500/20 hover:shadow-[0_0_12px_-3px_rgba(59,130,246,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Target className="h-4 w-4" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Pounce+</span>
-                          <span className="text-[9px] text-blue-400/50">+{currentRound?.pounce_plus ?? 0}</span>
-                        </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.06 }}
+                              whileTap={{ scale: 0.92 }}
+                              onClick={() => handleScore(team.id, 'pounce_plus')}
+                              disabled={submitting}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-blue-500/10 border border-blue-500/20 px-2 py-2 text-blue-300 transition-all hover:bg-blue-500/20 hover:shadow-[0_0_12px_-3px_rgba(59,130,246,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Target className="h-4 w-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Pounce+</span>
+                              <span className="text-[9px] text-blue-400/50">+{currentRound?.pounce_plus ?? 0}</span>
+                            </motion.button>
 
-                        <motion.button
-                          whileHover={{ scale: 1.06 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleScore(team.id, 'pounce_minus')}
-                          disabled={submitting}
-                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-red-500/10 border border-red-500/20 px-2 py-2 text-red-300 transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_-3px_rgba(239,68,68,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Minus className="h-4 w-4" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Pounce-</span>
-                          <span className="text-[9px] text-red-400/50">{currentRound?.pounce_minus ?? 0}</span>
-                        </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.06 }}
+                              whileTap={{ scale: 0.92 }}
+                              onClick={() => handleScore(team.id, 'pounce_minus')}
+                              disabled={submitting}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-red-500/10 border border-red-500/20 px-2 py-2 text-red-300 transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_-3px_rgba(239,68,68,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Minus className="h-4 w-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Pounce-</span>
+                              <span className="text-[9px] text-red-400/50">{currentRound?.pounce_minus ?? 0}</span>
+                            </motion.button>
+                          </>
+                        )}
 
-                        <motion.button
-                          whileHover={{ scale: 1.06 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleScore(team.id, 'buzzer')}
-                          disabled={submitting}
-                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-amber-500/10 border border-amber-500/20 px-2 py-2 text-amber-300 transition-all hover:bg-amber-500/20 hover:shadow-[0_0_12px_-3px_rgba(245,158,11,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <Award className="h-4 w-4" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Buzzer</span>
-                          <span className="text-[9px] text-amber-400/50">+{currentRound?.bounce_points ?? 0}</span>
-                        </motion.button>
+                        {/* Buzzer buttons - only show for buzzer rounds */}
+                        {currentRound?.round_type === 'buzzer' && (
+                          <>
+                            <motion.button
+                              whileHover={{ scale: 1.06 }}
+                              whileTap={{ scale: 0.92 }}
+                              onClick={() => handleScore(team.id, 'buzzer')}
+                              disabled={submitting}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-amber-500/10 border border-amber-500/20 px-2 py-2 text-amber-300 transition-all hover:bg-amber-500/20 hover:shadow-[0_0_12px_-3px_rgba(245,158,11,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <Award className="h-4 w-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Buzzer</span>
+                              <span className="text-[9px] text-amber-400/50">+{currentRound?.buzzer_points ?? 0}</span>
+                            </motion.button>
 
-                        <motion.button
-                          whileHover={{ scale: 1.06 }}
-                          whileTap={{ scale: 0.92 }}
-                          onClick={() => handleScore(team.id, 'buzzer_minus')}
-                          disabled={submitting}
-                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-orange-500/10 border border-orange-500/20 px-2 py-2 text-orange-300 transition-all hover:bg-orange-500/20 hover:shadow-[0_0_12px_-3px_rgba(249,115,22,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                          <AlertCircle className="h-4 w-4" />
-                          <span className="text-[10px] font-bold uppercase tracking-wider">Buzz-</span>
-                          <span className="text-[9px] text-orange-400/50">-{currentRound?.bounce_points ?? 0}</span>
-                        </motion.button>
+                            <motion.button
+                              whileHover={{ scale: 1.06 }}
+                              whileTap={{ scale: 0.92 }}
+                              onClick={() => handleScore(team.id, 'buzzer_minus')}
+                              disabled={submitting}
+                              className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-orange-500/10 border border-orange-500/20 px-2 py-2 text-orange-300 transition-all hover:bg-orange-500/20 hover:shadow-[0_0_12px_-3px_rgba(249,115,22,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              <AlertCircle className="h-4 w-4" />
+                              <span className="text-[10px] font-bold uppercase tracking-wider">Buzz-</span>
+                              <span className="text-[9px] text-orange-400/50">-{currentRound?.buzzer_points ?? 0}</span>
+                            </motion.button>
+                          </>
+                        )}
 
+                        {/* Bonus button - always shown */}
                         <motion.button
                           whileHover={{ scale: 1.06 }}
                           whileTap={{ scale: 0.92 }}
