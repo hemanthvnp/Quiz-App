@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ArrowLeft, Plus, Trash2, ChevronDown, AlertTriangle, Users } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import type { Event, Round, Moderator } from '../types';
+import type { Event, Round, Moderator, RoundType } from '../types';
 import { AppLayout, AppHeader, LoadingScreen } from '../components/Layout';
 import DateTimePicker from '../components/DateTimePicker';
 
@@ -11,9 +11,11 @@ interface RoundEditConfig {
   id: string | null; // null = new round to be created
   round_name: string;
   description: string;
+  round_type: RoundType;
   bounce_points: number;
   pounce_plus: number;
   pounce_minus: number;
+  buzzer_points: number;
   question_count: number;
   tiebreaker_questions: number;
 }
@@ -22,9 +24,11 @@ const defaultRound = (i: number): RoundEditConfig => ({
   id: null,
   round_name: `Round ${i + 1}`,
   description: '',
+  round_type: 'bounce_pounce',
   bounce_points: 10,
   pounce_plus: 15,
   pounce_minus: -5,
+  buzzer_points: 10,
   question_count: 5,
   tiebreaker_questions: 3,
 });
@@ -91,9 +95,11 @@ export default function EditEvent() {
           id: r.id,
           round_name: r.round_name,
           description: r.description ?? '',
+          round_type: r.round_type ?? 'bounce_pounce',
           bounce_points: r.bounce_points,
           pounce_plus: r.pounce_plus,
           pounce_minus: r.pounce_minus,
+          buzzer_points: r.buzzer_points ?? 10,
           question_count: r.question_count,
           tiebreaker_questions: r.tiebreaker_questions,
         })));
@@ -133,7 +139,20 @@ export default function EditEvent() {
       setDeleteRoundWarning(null);
     }
   };
-  const updRound = (i: number, f: keyof RoundEditConfig, v: string | number | null) => setRounds((p) => p.map((r, j) => j === i ? { ...r, [f]: v } : r));
+  const updRound = (i: number, f: keyof RoundEditConfig, v: string | number | null) => {
+    setRounds((p) => p.map((r, j) => {
+      if (j !== i) return r;
+      const updated = { ...r, [f]: v };
+      // Validation: pounce_plus must be >= 0, pounce_minus must be <= 0
+      if (f === 'pounce_plus' && typeof v === 'number' && v < 0) {
+        updated.pounce_plus = 0;
+      }
+      if (f === 'pounce_minus' && typeof v === 'number' && v > 0) {
+        updated.pounce_minus = 0;
+      }
+      return updated;
+    }));
+  };
   const toggleRound = (i: number) => setExpandedRounds((p) => { const n = new Set(p); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
   // Validation
@@ -195,10 +214,12 @@ export default function EditEvent() {
         if (r.id) {
           const { error: roundError } = await supabase.from('rounds').update({
             round_name: r.round_name.trim() || `Round ${i + 1}`,
+            round_type: r.round_type,
             description: r.description.trim() || null,
             bounce_points: r.bounce_points,
             pounce_plus: r.pounce_plus,
             pounce_minus: r.pounce_minus,
+            buzzer_points: r.buzzer_points,
             question_count: r.question_count,
             tiebreaker_questions: r.tiebreaker_questions,
             round_number: i + 1,
@@ -209,10 +230,12 @@ export default function EditEvent() {
             event_id: eventId,
             round_name: r.round_name.trim() || `Round ${i + 1}`,
             round_number: i + 1,
+            round_type: r.round_type,
             description: r.description.trim() || null,
             bounce_points: r.bounce_points,
             pounce_plus: r.pounce_plus,
             pounce_minus: r.pounce_minus,
+            buzzer_points: r.buzzer_points,
             question_count: r.question_count,
             tiebreaker_questions: r.tiebreaker_questions,
             status: 'pending',
@@ -319,7 +342,7 @@ export default function EditEvent() {
           {rounds.map((r, i) => (
             <Accordion
               key={r.id || `new-${i}`}
-              title={r.round_name || `Round ${i + 1}`}
+              title={`${r.round_name || `Round ${i + 1}`} (${r.round_type === 'bounce_pounce' ? 'Bounce & Pounce' : 'Buzzer'})`}
               open={expandedRounds.has(i)}
               toggle={() => toggleRound(i)}
               extra={rounds.length > 1 && (
@@ -329,12 +352,34 @@ export default function EditEvent() {
               )}
             >
               <div className="space-y-4 p-5 border-t border-white/[0.04]">
-                <div><label className={lbl}>Round Name</label><input placeholder={`Round ${i + 1}`} value={r.round_name} onChange={(e) => updRound(i, 'round_name', e.target.value)} className={inp} /></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div><label className={lbl}>Round Name</label><input placeholder={`Round ${i + 1}`} value={r.round_name} onChange={(e) => updRound(i, 'round_name', e.target.value)} className={inp} /></div>
+                  <div>
+                    <label className={lbl}>Round Type <span className="text-red-400">*</span></label>
+                    <select value={r.round_type} onChange={(e) => updRound(i, 'round_type', e.target.value as RoundType)} className={inp + ' cursor-pointer [&>option]:bg-slate-900 [&>option]:text-white'}>
+                      <option value="bounce_pounce">Bounce & Pounce</option>
+                      <option value="buzzer">Buzzer</option>
+                    </select>
+                  </div>
+                </div>
                 <div><label className={lbl}>Description</label><textarea rows={2} placeholder="Describe..." value={r.description} onChange={(e) => updRound(i, 'description', e.target.value)} className={inp + ' resize-none'} /></div>
-                <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                  <div><label className={lbl}>Bounce</label><input type="number" value={r.bounce_points} onChange={(e) => updRound(i, 'bounce_points', +e.target.value || 0)} className={inp} /></div>
-                  <div><label className={lbl}>Pounce +</label><input type="number" value={r.pounce_plus} onChange={(e) => updRound(i, 'pounce_plus', +e.target.value || 0)} className={inp} /></div>
-                  <div><label className={lbl}>Pounce -</label><input type="number" value={r.pounce_minus} onChange={(e) => updRound(i, 'pounce_minus', +e.target.value || 0)} className={inp} /></div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {r.round_type === 'bounce_pounce' && (
+                    <>
+                      <div><label className={lbl}>Bounce Points</label><input type="number" value={r.bounce_points} onChange={(e) => updRound(i, 'bounce_points', +e.target.value || 0)} className={inp} /></div>
+                      <div>
+                        <label className={lbl}>Pounce + <span className="text-xs text-slate-500">(≥0)</span></label>
+                        <input type="number" min={0} value={r.pounce_plus} onChange={(e) => updRound(i, 'pounce_plus', Math.max(0, +e.target.value || 0))} className={inp} />
+                      </div>
+                      <div>
+                        <label className={lbl}>Pounce − <span className="text-xs text-slate-500">(≤0)</span></label>
+                        <input type="number" max={0} value={r.pounce_minus} onChange={(e) => updRound(i, 'pounce_minus', Math.min(0, +e.target.value || 0))} className={inp} />
+                      </div>
+                    </>
+                  )}
+                  {r.round_type === 'buzzer' && (
+                    <div><label className={lbl}>Buzzer Points</label><input type="number" value={r.buzzer_points} onChange={(e) => updRound(i, 'buzzer_points', +e.target.value || 0)} className={inp} /></div>
+                  )}
                   <div><label className={lbl}>Questions</label><input type="number" min={1} max={20} value={r.question_count} onChange={(e) => updRound(i, 'question_count', Math.max(1, Math.min(20, +e.target.value || 5)))} className={inp} /></div>
                   <div><label className={lbl}>Tiebreaker Q</label><input type="number" min={1} max={10} value={r.tiebreaker_questions} onChange={(e) => updRound(i, 'tiebreaker_questions', Math.max(1, Math.min(10, +e.target.value || 3)))} className={inp} /></div>
                 </div>

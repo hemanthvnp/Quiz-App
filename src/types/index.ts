@@ -19,15 +19,19 @@ export interface Moderator {
   email?: string;
 }
 
+export type RoundType = 'bounce_pounce' | 'buzzer';
+
 export interface Round {
   id: string;
   event_id: string;
   round_name: string;
   round_number: number;
+  round_type: RoundType;
   description: string | null;
   bounce_points: number;
   pounce_plus: number;
   pounce_minus: number;
+  buzzer_points: number;
   question_count: number;
   tiebreaker_questions: number;
   status: 'pending' | 'active' | 'completed';
