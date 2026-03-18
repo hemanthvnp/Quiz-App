@@ -268,6 +268,12 @@ export default function EventRound() {
     return { hasTies: tiedIds.size > 0, tiedTeamIds: tiedIds };
   }, [teamsWithScores]);
 
+  const remainingQuestions = useMemo(() => {
+    if (!currentRound || !event) return 0;
+    const answered = event.current_question - 1;
+    return Math.max(0, currentRound.question_count - answered);
+  }, [currentRound, event]);
+
   // ---- Show feedback toast ----
   const showFeedback = useCallback((msg: string) => {
     setScoringFeedback(msg);
@@ -1706,20 +1712,26 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               </motion.button>
             )}
 
-            {/* Complete Round — when all questions answered, no ties, and round is active */}
-            {currentRound?.status === 'active' &&
-             event.current_question > (currentRound?.question_count ?? 0) &&
-             !tiedTeamsInfo.hasTies && !tiebreakerMode && (
+{/* Static Complete Round button - always visible when active */}
+            {currentRound?.status === 'active' && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={handleCompleteRound}
-                disabled={submitting}
-                className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 hover:shadow-lg disabled:opacity-40"
+                disabled={submitting || remainingQuestions > 0}
+                className={`flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${
+                  remainingQuestions > 0
+                    ? 'border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20'
+                    : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                }`}
+                title={remainingQuestions > 0 ? `Solve ${remainingQuestions} more questions first` : 'Complete round and view stats'}
               >
-                <CheckCircle2 className="h-4 w-4" />
-                Complete Round
-                {!isLastRound && <ChevronRight className="h-4 w-4" />}
+                <CheckCircle2 className={`h-4 w-4 ${remainingQuestions > 0 ? 'text-orange-400' : 'text-emerald-400'}`} />
+                {remainingQuestions > 0 
+                  ? `Complete (${remainingQuestions} left)` 
+                  : `Complete → Stats`
+                }
+                {!isLastRound && remainingQuestions <= 0 && <ChevronRight className="h-4 w-4" />}
               </motion.button>
             )}
 
