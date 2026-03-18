@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-// Fix NodeJS namespace error
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -26,6 +25,7 @@ import {
   RotateCcw,
   Pencil,
   SkipForward,
+  RefreshCw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import type { Event, Round, Team, Score, TeamWithScores, ActionType } from '../types';
@@ -103,6 +103,9 @@ export default function EventRound() {
   const [submitting, setSubmitting] = useState(false);
   const submittingRef = useRef(false);
 
+  // ---- Restart Round state ----
+  const [confirmRestartOpen, setConfirmRestartOpen] = useState(false);
+
   // ---- Undo state ----
   const [lastAction, setLastAction] = useState<{
     scoreId: string;
@@ -130,21 +133,26 @@ export default function EventRound() {
   // Persistence for tiebreaker state per round
   const [roundTiebreakerStates, setRoundTiebreakerStates] = useState<Record<string, {mode: boolean; teams: Set<string>}>>({});
 
-// ---- History Edit state ----
+  // ---- History Edit state ----
+  // When editingHistoryQuestion is set, the header badge and scoring are redirected
+  // to targetQuestion. originalQuestion is where we return after saving.
   const [editingHistoryQuestion, setEditingHistoryQuestion] = useState<{ targetQuestion: number; originalQuestion: number } | null>(null);
+  const [editBackupScores, setEditBackupScores] = useState<Score[]>([]);
   const [deletingQuestion, setDeletingQuestion] = useState<number | null>(null);
   const deleteTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---- Final Results Modal state ----
-  // Removed unused showFinalResultsModal and setShowFinalResultsModal
   const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
 
   // ---- Reopen Round confirmation ----
   const [confirmReopenOpen, setConfirmReopenOpen] = useState(false);
 
+  // ---- Skipped questions — tracked in state, NOT in DB (team_id is NOT NULL) ----
+  // Shape: { [roundId]: Set<questionNumber> }
+  const [skippedQuestions, setSkippedQuestions] = useState<Record<string, Set<number>>>({});
+
   // ---- Refs ----
   const autoCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const roundDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -162,14 +170,12 @@ export default function EventRound() {
   const canReopenRound = useMemo(() => {
     if (!currentRound || currentRound.status !== 'completed') return false;
     if (!event) return false;
-    // Show reopen button for any completed round
     return true;
   }, [currentRound, event]);
 
   const canExecuteReopen = useMemo(() => {
     if (!currentRound || currentRound.status !== 'completed') return false;
     if (!event) return false;
-    // Allow reopening any completed round
     return true;
   }, [currentRound, event]);
 
@@ -199,29 +205,43 @@ export default function EventRound() {
     return sorted;
   }, [teamsWithScores, sortKey, sortAsc, filterMode]);
 
-    const questionHistory = useMemo(() => {
-    if (!currentRoundId) return [];
-    
-    // Group scores by question, deduplicate by scoreId (latest wins)
+  // ---- Question history: includes normal, tiebreaker, and skipped questions ----
+  // Skipped questions come from local state (not DB) because team_id is NOT NULL in scores.
+  const questionHistory = useMemo(() => {
+    if (!currentRoundId || !currentRound) return [];
+
     const scoreMap = new Map<string, Score>();
     scores
       .filter((s) => s.round_id === currentRoundId)
       .forEach((s) => scoreMap.set(s.id, s));
-    
+
     const roundScores = Array.from(scoreMap.values());
-    
+
     const map = new Map<number, {
       questionNumber: number;
+      isTiebreaker: boolean;
+      isSkipped: boolean;
       actions: { scoreId: string; teamId: string | null; teamName: string; actionType: ActionType; points: number }[];
       winnerTeamName: string | null;
     }>();
 
+    // First pass: build from actual score records
     roundScores.forEach((s) => {
       const team = teams.find((t) => t.id === s.team_id);
+      const isTiebreaker = s.question_number > currentRound.question_count;
+
       if (!map.has(s.question_number)) {
-        map.set(s.question_number, { questionNumber: s.question_number, actions: [], winnerTeamName: null });
+        map.set(s.question_number, {
+          questionNumber: s.question_number,
+          isTiebreaker,
+          isSkipped: false,
+          actions: [],
+          winnerTeamName: null,
+        });
       }
       const entry = map.get(s.question_number)!;
+      if (isTiebreaker) entry.isTiebreaker = true;
+
       entry.actions.push({
         scoreId: s.id,
         teamId: s.team_id,
@@ -229,14 +249,49 @@ export default function EventRound() {
         actionType: s.action_type as ActionType,
         points: s.points,
       });
+
       if (s.winning_team_id && !entry.winnerTeamName) {
         const winnerTeam = teams.find((t) => t.id === s.winning_team_id);
         entry.winnerTeamName = winnerTeam?.name ?? null;
       }
     });
 
+    // Second pass: inject skipped questions from local state
+    const roundSkips = skippedQuestions[currentRound.id] ?? new Set<number>();
+    roundSkips.forEach((qNum) => {
+      if (!map.has(qNum)) {
+        map.set(qNum, {
+          questionNumber: qNum,
+          isTiebreaker: qNum > currentRound.question_count,
+          isSkipped: true,
+          actions: [],
+          winnerTeamName: null,
+        });
+      } else {
+        // If scores exist for this question, it was re-attended — don't mark as skipped
+        // (skip was cleared when rebuilding via history edit)
+      }
+    });
+
     return Array.from(map.values()).sort((a, b) => a.questionNumber - b.questionNumber);
-  }, [scores, currentRoundId, teams]);
+  }, [scores, currentRoundId, currentRound, teams, skippedQuestions]);
+
+  // ---- Separate question counts for normal vs tiebreaker ----
+  const questionCounts = useMemo(() => {
+    if (!currentRoundId || !currentRound) return { normal: 0, tiebreaker: 0 };
+    const roundScores = scores.filter((s) => s.round_id === currentRoundId);
+    const normalQs = new Set(
+      roundScores
+        .filter((s) => s.question_number <= currentRound.question_count)
+        .map((s) => s.question_number)
+    );
+    const tiebreakerQs = new Set(
+      roundScores
+        .filter((s) => s.question_number > currentRound.question_count)
+        .map((s) => s.question_number)
+    );
+    return { normal: normalQs.size, tiebreaker: tiebreakerQs.size };
+  }, [scores, currentRoundId, currentRound]);
 
   const overallLeaderboard = useMemo(() => {
     return [...teamsWithScores].sort((a, b) => b.totalScore - a.totalScore);
@@ -249,13 +304,11 @@ export default function EventRound() {
   // Detect ties in overall scores (only top 3 positions)
   const tiedTeamsInfo = useMemo(() => {
     const sorted = [...teamsWithScores].sort((a, b) => b.totalScore - a.totalScore);
-    // Tie-aware ranking
     let rank = 1;
     const ranked = sorted.map((t, i) => {
       if (i > 0 && t.totalScore < sorted[i - 1].totalScore) rank = i + 1;
       return { ...t, rank };
     });
-    // Only consider teams in top 3 positions
     const top3 = ranked.filter(t => t.rank <= 3);
     const scoreGroups = new Map<number, string[]>();
     top3.forEach(t => {
@@ -267,6 +320,12 @@ export default function EventRound() {
     scoreGroups.forEach((ids) => { if (ids.length > 1) ids.forEach((id) => tiedIds.add(id)); });
     return { hasTies: tiedIds.size > 0, tiedTeamIds: tiedIds };
   }, [teamsWithScores]);
+
+  const remainingQuestions = useMemo(() => {
+    if (!currentRound || !event) return 0;
+    const answered = event.current_question - 1;
+    return Math.max(0, currentRound.question_count - answered);
+  }, [currentRound, event]);
 
   // ---- Show feedback toast ----
   const showFeedback = useCallback((msg: string) => {
@@ -322,8 +381,6 @@ export default function EventRound() {
     fetchData();
   }, [fetchData]);
 
-
-
   // ---- Realtime subscription ----
   useEffect(() => {
     if (!eventId) return;
@@ -378,10 +435,8 @@ export default function EventRound() {
         .eq('id', lastAction.scoreId);
       if (error) throw error;
 
-      // Immediately remove from local state
       setScores((prev) => prev.filter((s) => s.id !== lastAction.scoreId));
 
-      // Cancel auto-complete if undoing
       if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
 
       if (lastAction.wasPositive && event) {
@@ -407,7 +462,7 @@ export default function EventRound() {
     }
   }, [lastAction, eventId, event, undoing, showFeedback]);
 
-  // ---- Calculate incomplete rounds for final results modal ----
+  // ---- Calculate incomplete rounds ----
   useEffect(() => {
     const incomplete = rounds.filter((r) => r.status !== 'completed');
     setIncompleteRounds(incomplete);
@@ -416,7 +471,7 @@ export default function EventRound() {
   // ---- Keyboard shortcuts ----
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (bonusModalOpen || leaderboardOpen || editModalOpen) return;
+      if (bonusModalOpen || leaderboardOpen || editModalOpen || confirmRestartOpen) return;
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
 
       if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
@@ -430,7 +485,7 @@ export default function EventRound() {
         setShortcutsOpen((v) => !v);
       } else if (e.key === 'l' || e.key === 'L') {
         e.preventDefault();
-setLeaderboardOpen((v) => !v);
+        setLeaderboardOpen((v) => !v);
       } else if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault();
         setQuestionPanelOpen((v) => !v);
@@ -439,22 +494,20 @@ setLeaderboardOpen((v) => !v);
         setLeaderboardOpen(false);
         setBonusModalOpen(false);
         setEditModalOpen(false);
+        setConfirmRestartOpen(false);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [bonusModalOpen, leaderboardOpen, editModalOpen, handleUndoScore]);
+  }, [bonusModalOpen, leaderboardOpen, editModalOpen, confirmRestartOpen, handleUndoScore]);
 
-  // ---- Auto-complete round (used after last question) ----
-  // Always navigates to round stats so the host can review before moving on.
-  // The host can then choose "Final Results" from round stats when ready.
+  // ---- Auto-complete round ----
   const autoCompleteRound = useCallback(async () => {
     if (!currentRound || !eventId || !event) return;
     setSubmitting(true);
     try {
       await supabase.from('rounds').update({ status: 'completed' }).eq('id', currentRound.id);
 
-      // Find the next NON-COMPLETED round (not just the next round number)
       const nextNonCompletedRound = rounds.find(
         (r) => r.round_number > currentRound.round_number && r.status !== 'completed'
       );
@@ -473,7 +526,6 @@ setLeaderboardOpen((v) => !v);
         setCurrentRoundId(nextNonCompletedRound.id);
         setEvent((prev) => (prev ? { ...prev, current_round_id: nextNonCompletedRound.id, current_question: 1 } : prev));
       } else {
-        // All rounds completed — mark event as completed
         await supabase.from('events').update({ status: 'completed' }).eq('id', eventId);
         setRounds((prev) =>
           prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
@@ -481,7 +533,6 @@ setLeaderboardOpen((v) => !v);
         setEvent((prev) => (prev ? { ...prev, status: 'completed' } : prev));
       }
 
-      // Always show round stats first so host can review
       navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
     } catch (err: unknown) {
       showFeedback(`Error: ${err instanceof Error ? err.message : 'Failed to complete round'}`);
@@ -489,6 +540,81 @@ setLeaderboardOpen((v) => !v);
       setSubmitting(false);
     }
   }, [currentRound, eventId, event, rounds, showFeedback, navigate]);
+
+  // ---- Restart Round ----
+  // Clears ALL scores for the current round, resets question counter to 1,
+  // resets tiebreaker state. Can be used at any point during an active round.
+  const handleRestartRound = useCallback(async () => {
+    if (!currentRound || !eventId || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    setConfirmRestartOpen(false);
+    try {
+      // 1. Delete all scores for this round
+      const { error: deleteError } = await supabase
+        .from('scores')
+        .delete()
+        .eq('round_id', currentRound.id);
+      if (deleteError) throw deleteError;
+
+      // 2. Reset event question counter to 1
+      const { error: updateError } = await supabase
+        .from('events')
+        .update({ current_question: 1 })
+        .eq('id', eventId);
+      if (updateError) throw updateError;
+
+      // 3. If round was completed, reopen it
+      if (currentRound.status === 'completed') {
+        await supabase
+          .from('rounds')
+          .update({ status: 'active' })
+          .eq('id', currentRound.id);
+        setRounds((prev) =>
+          prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'active' as const } : r))
+        );
+        // If event was completed too, revert it
+        if (event?.status === 'completed') {
+          await supabase.from('events').update({ status: 'active' }).eq('id', eventId);
+          setEvent((prev) => (prev ? { ...prev, status: 'active' as const } : prev));
+        }
+      }
+
+      // 4. Update local state
+      setScores((prev) => prev.filter((s) => s.round_id !== currentRound.id));
+      setEvent((prev) => (prev ? { ...prev, current_question: 1 } : prev));
+
+      // 5. Clear tiebreaker state for this round
+      if (currentRoundId) {
+        setRoundTiebreakerStates((prev) => {
+          const newStates = { ...prev };
+          delete newStates[currentRoundId];
+          return newStates;
+        });
+        // Clear skipped questions for this round
+        setSkippedQuestions((prev) => {
+          const newSkips = { ...prev };
+          delete newSkips[currentRound.id];
+          return newSkips;
+        });
+      }
+      setTiebreakerMode(false);
+      setTiebreakerTeamIds(new Set());
+
+      // 6. Clear undo history and edit state
+      setLastAction(null);
+      setEditingHistoryQuestion(null);
+      if (undoTimeout.current) clearTimeout(undoTimeout.current);
+      if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
+
+      showFeedback(`${currentRound.round_name} restarted — all scores cleared`);
+    } catch (err: unknown) {
+      showFeedback(`Restart failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [currentRound, currentRoundId, eventId, event, showFeedback]);
 
   // ---- Scoring action ----
   const handleScore = useCallback(
@@ -500,7 +626,6 @@ setLeaderboardOpen((v) => !v);
         return;
       }
 
-      // In tiebreaker mode, only allow scoring for tiebreaker teams
       if (tiebreakerMode && !tiebreakerTeamIds.has(teamId)) {
         showFeedback('Only tiebreaker teams can score right now');
         return;
@@ -533,7 +658,6 @@ setLeaderboardOpen((v) => !v);
 
       const isPositive = ['bounce', 'pounce_plus', 'buzzer', 'bonus'].includes(actionType) && points > 0;
 
-      // Block positive actions that advance question counter beyond limit (skip in tiebreaker mode)
       if (!tiebreakerMode && isPositive && event.current_question > currentRound.question_count) {
         showFeedback(`All ${currentRound.question_count} questions answered — complete the round`);
         submittingRef.current = false;
@@ -541,7 +665,6 @@ setLeaderboardOpen((v) => !v);
         return;
       }
 
-      // In tiebreaker mode, block if max tiebreaker questions exceeded
       const maxTiebreakerQ = currentRound.question_count + (currentRound.tiebreaker_questions ?? 3);
       if (tiebreakerMode && isPositive && event.current_question > maxTiebreakerQ) {
         showFeedback(`All ${currentRound.tiebreaker_questions ?? 3} tiebreaker questions used — end tiebreaker`);
@@ -555,7 +678,6 @@ setLeaderboardOpen((v) => !v);
         (s) => s.round_id === currentRound.id && s.question_number === event.current_question
       );
 
-      // Guard 1: Block if a winner already exists for this question (only one team can win)
       if (isPositive) {
         const existingWinner = currentQuestionScores.find((s) => s.winning_team_id !== null);
         if (existingWinner) {
@@ -567,7 +689,6 @@ setLeaderboardOpen((v) => !v);
         }
       }
 
-      // Guard 2: Block same team + same action type on the same question
       const duplicateAction = currentQuestionScores.find(
         (s) => s.team_id === teamId && s.action_type === actionType
       );
@@ -592,26 +713,22 @@ setLeaderboardOpen((v) => !v);
 
         if (insertError) throw insertError;
 
-        // Immediately add the new score to local state (don't wait for realtime subscription)
         setScores((prev) => [...prev, insertedScore as Score]);
 
         let feedbackOverride: string | null = null;
 
         if (isPositive) {
           if (editingHistoryQuestion && event.current_question === editingHistoryQuestion.targetQuestion) {
-            // Historical edit: auto-return, no advance
             const { originalQuestion } = editingHistoryQuestion;
             await supabase.from('events').update({ current_question: originalQuestion }).eq('id', eventId);
             setEvent((prev) => (prev ? { ...prev, current_question: originalQuestion } : prev));
             setEditingHistoryQuestion(null);
             feedbackOverride = `Q${event.current_question} updated! Back to current.`;
           } else {
-            // Normal flow
             const nextQ = event.current_question + 1;
             await supabase.from('events').update({ current_question: nextQ }).eq('id', eventId);
             setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
 
-            // Compute updated totals including this new score (state hasn't updated from realtime yet)
             const updatedTotals = new Map<string, number>();
             teams.forEach(t => {
               const total = scores.filter(s => s.team_id === t.id).reduce((sum, s) => sum + s.points, 0);
@@ -620,8 +737,6 @@ setLeaderboardOpen((v) => !v);
             updatedTotals.set(teamId, (updatedTotals.get(teamId) || 0) + points);
 
             if (!tiebreakerMode && nextQ > currentRound.question_count) {
-              // All regular questions answered — check for ties before auto-completing
-              // Compute tie check with updated scores (state hasn't re-rendered yet)
               const sortedTotals = Array.from(updatedTotals.entries())
                 .sort(([, a], [, b]) => b - a);
               let tieRank = 1;
@@ -640,21 +755,17 @@ setLeaderboardOpen((v) => !v);
               tieGroups.forEach((ids) => { if (ids.length > 1) hasTiesNow = true; });
 
               if (hasTiesNow) {
-                // Ties exist — do NOT auto-complete. Let the host see the tiebreaker button.
                 feedbackOverride = 'All questions done — teams are tied! Start a tiebreaker.';
               } else {
-                // No ties — safe to auto-complete
                 if (autoCompleteTimeout.current) clearTimeout(autoCompleteTimeout.current);
                 autoCompleteTimeout.current = setTimeout(() => autoCompleteRound(), 800);
               }
             } else if (tiebreakerMode) {
-            // During tiebreaker — check if ties among tiebreaker teams are resolved
-            const tiebreakerScores = Array.from(tiebreakerTeamIds).map(id => updatedTotals.get(id) || 0);
-            const allUnique = new Set(tiebreakerScores).size === tiebreakerScores.length;
-
-            if (allUnique) {
-              // Ties resolved — show feedback but let user complete manually
-              feedbackOverride = 'Tie broken! Ready to complete round.';
+              const tiebreakerScores = Array.from(tiebreakerTeamIds).map(id => updatedTotals.get(id) || 0);
+              const allUnique = new Set(tiebreakerScores).size === tiebreakerScores.length;
+              if (allUnique) {
+                feedbackOverride = 'Tie broken! Ready to complete round.';
+              }
             }
           }
         }
@@ -664,7 +775,6 @@ setLeaderboardOpen((v) => !v);
         const sign = points >= 0 ? '+' : '';
         showFeedback(feedbackOverride ?? `${teamName}: ${sign}${points} pts (${actionType.replace('_', ' ')})`);
 
-        // Track for undo
         if (undoTimeout.current) clearTimeout(undoTimeout.current);
         setLastAction({
           scoreId: insertedScore.id,
@@ -677,20 +787,19 @@ setLeaderboardOpen((v) => !v);
 
         setAnimatingTeamId(teamId);
         setTimeout(() => setAnimatingTeamId(null), 500);
-      }} catch (err: unknown) {
+      } catch (err: unknown) {
         showFeedback(`Error: ${err instanceof Error ? err.message : 'Scoring failed'}`);
       } finally {
         submittingRef.current = false;
         setSubmitting(false);
       }
     },
-    [event, currentRound, eventId, teams, scores, showFeedback, tiebreakerMode, tiebreakerTeamIds, autoCompleteRound]
+    [event, currentRound, eventId, teams, scores, showFeedback, tiebreakerMode, tiebreakerTeamIds, autoCompleteRound, editingHistoryQuestion]
   );
 
   // ---- Skip question ----
-  // Use case: Host skips when no team can answer (time's up / nobody knows).
-  // Records a 0-point "skip" score so the question shows in history, then advances.
-  // If this was the last question in the round, triggers auto-complete.
+  // Records a 'skip' score entry so skipped questions appear in history
+  // and can be re-attended later via the history edit button.
   const handleSkipQuestion = useCallback(async () => {
     if (!event || !currentRound || !eventId || submittingRef.current) return;
     if (currentRound.status !== 'active') return;
@@ -699,23 +808,29 @@ setLeaderboardOpen((v) => !v);
     submittingRef.current = true;
     setSubmitting(true);
     try {
-      const nextQ = event.current_question + 1;
+      const skippedQ = event.current_question;
+      const nextQ = skippedQ + 1;
 
-      // Update event question counter
+      // Track skipped question in local state only — no DB insert because
+      // the scores table has team_id NOT NULL, and skips have no team.
+      setSkippedQuestions((prev) => {
+        const roundSkips = new Set(prev[currentRound.id] ?? []);
+        roundSkips.add(skippedQ);
+        return { ...prev, [currentRound.id]: roundSkips };
+      });
+
+      // Advance question counter in DB
       const { error: updateError } = await supabase
         .from('events')
         .update({ current_question: nextQ })
         .eq('id', eventId);
       if (updateError) throw updateError;
 
-      // Update local state
       setEvent((prev) => (prev ? { ...prev, current_question: nextQ } : prev));
-
-      showFeedback(`Question ${event.current_question} skipped`);
+      showFeedback(`Question ${skippedQ} skipped `);
 
       // If that was the last question, check for ties before auto-completing
       if (nextQ > currentRound.question_count) {
-        // Compute current team totals to check for ties
         const totals = new Map<string, number>();
         teams.forEach(t => {
           const total = scores.filter(s => s.team_id === t.id).reduce((sum, s) => sum + s.points, 0);
@@ -765,14 +880,13 @@ setLeaderboardOpen((v) => !v);
         .update({ points: newPts })
         .eq('id', editingScore.scoreId);
       if (updateError) throw updateError;
-      
-      // Immediately update local state
+
       setScores((prev) =>
         prev.map((s) =>
           s.id === editingScore.scoreId ? { ...s, points: newPts } : s
         )
       );
-      
+
       showFeedback(`Updated ${editingScore.teamName}: ${newPts} pts`);
       setEditModalOpen(false);
       setEditingScore(null);
@@ -783,6 +897,40 @@ setLeaderboardOpen((v) => !v);
       setSubmitting(false);
     }
   }, [editingScore, editPoints, eventId, showFeedback]);
+
+  // ---- Cancel edit history — exit edit mode, restore original question ----
+  const handleCancelHistoryEdit = useCallback(async () => {
+    if (!editingHistoryQuestion || !eventId) return;
+    try {
+      await supabase
+        .from('events')
+        .update({ current_question: editingHistoryQuestion.originalQuestion })
+        .eq('id', eventId);
+      setEvent((prev) =>
+        prev ? { ...prev, current_question: editingHistoryQuestion.originalQuestion } : prev
+      );
+
+      // Restore backed up scores
+      if (editBackupScores.length > 0) {
+        const { error } = await supabase
+          .from('scores')
+          .insert(editBackupScores);
+        if (!error) {
+          setScores(prev => [...prev, ...editBackupScores]);
+        }
+      }
+
+      setEditingHistoryQuestion(null);
+      setEditBackupScores([]);
+      showFeedback('Edit cancelled — original scores restored');
+    } catch (err) {
+      console.error('Cancel edit failed:', err);
+      // silently reset local state even if DB update fails
+      setEditingHistoryQuestion(null);
+      setEditBackupScores([]);
+      showFeedback('Edit cancelled — returned to current question');
+    }
+  }, [editingHistoryQuestion, eventId, showFeedback, editBackupScores]);
 
   // ---- Bonus submit ----
   const handleBonusSubmit = useCallback(() => {
@@ -799,15 +947,12 @@ setLeaderboardOpen((v) => !v);
   const switchRound = useCallback(
     async (roundId: string) => {
       if (!eventId || !currentRound || roundId === currentRoundId) return;
-      
+
       setSubmitting(true);
       try {
         const targetRound = rounds.find((r) => r.id === roundId);
         if (!targetRound) return;
 
-        // 1. Handle the current (source) round:
-        //    - If NOT completed → change to "pending"
-        //    - If completed → keep as "completed"
         if (currentRound.status === 'active') {
           const newStatusForCurrentRound = 'pending' as const;
           await supabase
@@ -822,9 +967,6 @@ setLeaderboardOpen((v) => !v);
           );
         }
 
-        // 2. Handle the target (destination) round:
-        //    - If NOT completed → change to "active"
-        //    - If completed → keep as "completed" (allow viewing/modifying, but don't activate)
         if (targetRound.status !== 'completed') {
           await supabase
             .from('rounds')
@@ -838,10 +980,8 @@ setLeaderboardOpen((v) => !v);
           );
         }
 
-        // 3. Calculate the correct current_question for the target round
         let targetCurrentQuestion = 1;
         if (targetRound.status !== 'completed') {
-          // For active/pending rounds: calculate based on winning answers
           const roundWinningScores = scores.filter(
             (s) => s.round_id === roundId && s.winning_team_id
           );
@@ -850,7 +990,6 @@ setLeaderboardOpen((v) => !v);
               Math.max(...roundWinningScores.map((s) => s.question_number)) + 1;
           }
         } else {
-          // For completed rounds: show max question number (all questions answered)
           const roundScores = scores.filter((s) => s.round_id === roundId);
           if (roundScores.length > 0) {
             targetCurrentQuestion = Math.max(...roundScores.map((s) => s.question_number)) + 1;
@@ -859,13 +998,11 @@ setLeaderboardOpen((v) => !v);
           }
         }
 
-        // 4. Update event's current round reference
         await supabase
           .from('events')
           .update({ current_round_id: roundId, current_question: targetCurrentQuestion })
           .eq('id', eventId);
 
-        // 5. Update local state
         setCurrentRoundId(roundId);
         setEvent((prev) =>
           prev
@@ -878,8 +1015,9 @@ setLeaderboardOpen((v) => !v);
         );
         setRoundDropdownOpen(false);
         setLastAction(null);
+        setEditingHistoryQuestion(null);
+        // Skipped questions are per-round; state is preserved in skippedQuestions map
 
-        // Restore tiebreaker state for target round
         const tbState = roundTiebreakerStates[roundId];
         if (tbState) {
           setTiebreakerMode(tbState.mode);
@@ -896,14 +1034,13 @@ setLeaderboardOpen((v) => !v);
         setSubmitting(false);
       }
     },
-    [currentRound, currentRoundId, eventId, event, rounds, scores, showFeedback]
+    [currentRound, currentRoundId, eventId, rounds, scores, showFeedback, roundTiebreakerStates]
   );
 
   // ---- Complete round & activate next ----
   const handleCompleteRound = useCallback(async () => {
     if (!currentRound || !eventId || !event) return;
 
-    // Verify all questions answered
     const questionsAnswered = event.current_question - 1;
     const totalQuestions = currentRound.question_count;
     if (questionsAnswered < totalQuestions) {
@@ -913,16 +1050,13 @@ setLeaderboardOpen((v) => !v);
 
     setSubmitting(true);
     try {
-      // 1. Mark current round as completed
       await supabase.from('rounds').update({ status: 'completed' }).eq('id', currentRound.id);
 
-      // 2. Find the next NON-COMPLETED round (not just the next round number)
       const nextNonCompletedRound = rounds.find(
         (r) => r.round_number > currentRound.round_number && r.status !== 'completed'
       );
 
       if (nextNonCompletedRound) {
-        // 3a. If there's a non-completed round, activate it
         await supabase
           .from('rounds')
           .update({ status: 'active' })
@@ -947,7 +1081,6 @@ setLeaderboardOpen((v) => !v);
         showFeedback(`Round completed! Now on ${nextNonCompletedRound.round_name}`);
         navigate(`/events/${eventId}/rounds/${currentRound.id}/stats`);
       } else {
-        // Always go to round stats after completion (no auto final results)
         setRounds((prev) =>
           prev.map((r) => (r.id === currentRound.id ? { ...r, status: 'completed' } : r))
         );
@@ -962,17 +1095,12 @@ setLeaderboardOpen((v) => !v);
   }, [currentRound, eventId, event, rounds, showFeedback, navigate]);
 
   // ---- Reopen a completed round ----
-  // Use case: Host realizes a scoring mistake after completing a round. Reopening
-  // brings the round back to "active" so corrections can be made. If the event was
-  // already marked completed (final stats shown), it reverts the event to active too.
-  // If the next round was activated, it pauses that round back to pending.
   const handleReopenRound = useCallback(async () => {
     if (!currentRound || !eventId || submittingRef.current || !canExecuteReopen) return;
     submittingRef.current = true;
     setSubmitting(true);
     setConfirmReopenOpen(false);
     try {
-      // 1. Reactivate this round
       await supabase
         .from('rounds')
         .update({ status: 'active' })
@@ -980,7 +1108,6 @@ setLeaderboardOpen((v) => !v);
 
       const wasEventCompleted = event?.status === 'completed';
 
-      // 2. If there's a next round that is currently active, pause it back to pending
       const nextActiveRound = rounds.find(
         (r) => r.round_number > currentRound.round_number && r.status === 'active'
       );
@@ -991,7 +1118,6 @@ setLeaderboardOpen((v) => !v);
           .eq('id', nextActiveRound.id);
       }
 
-      // 3. Derive current_question from existing scores in this round
       const roundWinningScores = scores.filter(
         (s) => s.round_id === currentRound.id && s.winning_team_id
       );
@@ -1000,7 +1126,6 @@ setLeaderboardOpen((v) => !v);
           ? Math.max(...roundWinningScores.map((s) => s.question_number)) + 1
           : 1;
 
-      // 4. Update event state — always revert to active and point to this round
       const eventUpdates: Record<string, unknown> = {
         current_round_id: currentRound.id,
         current_question: maxQ,
@@ -1010,7 +1135,6 @@ setLeaderboardOpen((v) => !v);
       }
       await supabase.from('events').update(eventUpdates).eq('id', eventId);
 
-      // 5. Update local state
       setRounds((prev) =>
         prev.map((r) => {
           if (r.id === currentRound.id) return { ...r, status: 'active' as const };
@@ -1046,7 +1170,7 @@ setLeaderboardOpen((v) => !v);
   // ---- Navigate to stats ----
   const handleViewStats = useCallback(() => {
     if (!eventId || !currentRound) return;
-    
+
     if (isLastRound) {
       if (incompleteRounds.length > 0) {
         showFeedback(`Cannot view final results: ${incompleteRounds.length} round(s) not completed. Complete all rounds first.`);
@@ -1059,7 +1183,7 @@ setLeaderboardOpen((v) => !v);
   }, [eventId, currentRound, isLastRound, incompleteRounds.length, navigate, showFeedback]);
 
   // ---- Start tiebreaker ----
-    const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
+  const handleStartTiebreaker = useCallback((tiedIds: Set<string>) => {
     if (!currentRoundId) return;
     const newState = { mode: true, teams: new Set(tiedIds) };
     setRoundTiebreakerStates(prev => ({ ...prev, [currentRoundId]: newState }));
@@ -1078,8 +1202,7 @@ setLeaderboardOpen((v) => !v);
     });
     setTiebreakerMode(false);
     setTiebreakerTeamIds(new Set());
-    
-    // Check if ties resolved after tiebreaker
+
     setTimeout(() => {
       if (!tiedTeamsInfo.hasTies) {
         autoCompleteRound();
@@ -1089,9 +1212,6 @@ setLeaderboardOpen((v) => !v);
       }
     }, 500);
   }, [autoCompleteRound, showFeedback, tiedTeamsInfo.hasTies, currentRoundId]);
-
-  // ---- Confirm final results (mark incomplete rounds as completed) ----
-  // Removed bypass modal functionality - final results now strictly require all rounds completed
 
   // ---- Loading / Error states ----
   if (loading) {
@@ -1188,10 +1308,11 @@ setLeaderboardOpen((v) => !v);
             </div>
           </div>
 
-          {/* Center: Current question badge */}
-          <div className="flex items-center gap-2">
+          {/* Center: Question badges — normal + tiebreaker shown separately */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Normal question badge */}
             <motion.div
-              key={event.current_question}
+              key={`normal-${event.current_question}`}
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               className={`flex items-center gap-2 rounded-xl border px-4 py-2 ${
@@ -1199,8 +1320,6 @@ setLeaderboardOpen((v) => !v);
                   ? 'border-slate-500/20 bg-slate-500/10'
                   : editingHistoryQuestion
                   ? 'border-amber-500/30 bg-amber-500/10 ring-2 ring-amber-500/30'
-                  : tiebreakerMode
-                  ? 'border-amber-500/20 bg-amber-500/10'
                   : 'border-cyan-500/20 bg-cyan-500/10'
               }`}
             >
@@ -1208,54 +1327,84 @@ setLeaderboardOpen((v) => !v);
                 <>
                   <CheckCircle2 className="h-4 w-4 text-slate-400" />
                   <span className="text-sm font-medium text-slate-400">Completed</span>
-                  <span className="text-xs text-slate-500">{currentRound.question_count} questions</span>
+                  <span className="text-xs text-slate-500">{questionCounts.normal}/{currentRound.question_count} Q</span>
                 </>
               ) : editingHistoryQuestion ? (
-                <>
-                  <div className="flex items-center gap-1">
-                    <RotateCcw className="h-4 w-4 text-amber-400" />
-                    <span className="text-sm font-bold text-amber-300">
-                      Editing Q{editingHistoryQuestion.targetQuestion}
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (editingHistoryQuestion && event) {
-                          supabase.from('events').update({ current_question: editingHistoryQuestion.originalQuestion }).eq('id', eventId!);
-                          setEvent(prev => prev ? { ...prev, current_question: editingHistoryQuestion.originalQuestion } : prev);
-                          setEditingHistoryQuestion(null);
-                          showFeedback('Edit cancelled - returned to current question');
-                        }
-                      }}
-                      className="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 transition-colors"
-                      title="Cancel Edit"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                </>
+                <div className="flex items-center gap-1">
+                  <RotateCcw className="h-4 w-4 text-amber-400" />
+                  <span className="text-sm font-bold text-amber-300">
+                    Editing Q{editingHistoryQuestion.targetQuestion}
+                  </span>
+                  {/* Close/cancel edit mode button */}
+                  <button
+                    onClick={handleCancelHistoryEdit}
+                    className="ml-1 p-0.5 rounded hover:bg-amber-500/20 text-amber-300 hover:text-amber-200 transition-colors"
+                    title="Cancel Edit — keep original value"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               ) : (
                 <>
-                  <Hash className={`h-4 w-4 ${tiebreakerMode ? 'text-amber-400' : 'text-cyan-400'}`} />
-                  <span className="text-sm font-medium text-slate-400">
-                    {tiebreakerMode ? 'Tiebreaker Q' : 'Question'}
-                  </span>
-                  <span className={`text-xl font-bold ${tiebreakerMode ? 'text-amber-300' : 'text-cyan-300'}`}>
-{tiebreakerMode
-                      ? Math.max(1, event.current_question - (currentRound?.question_count ?? 0))
-                      : event.current_question}
+                  <Hash className="h-4 w-4 text-cyan-400" />
+                  <span className="text-sm font-medium text-slate-400">Question</span>
+                  <span className="text-xl font-bold text-cyan-300">
+                    {Math.min(event.current_question, currentRound?.question_count ?? event.current_question)}
                   </span>
                   {currentRound && (
                     <span className="text-xs text-slate-500">
-                      / {tiebreakerMode ? (currentRound.tiebreaker_questions ?? 3) : currentRound.question_count}
+                      / {currentRound.question_count}
                     </span>
                   )}
                 </>
               )}
             </motion.div>
+
+            {/* Tiebreaker question badge — shown only when tiebreaker questions exist or mode is active */}
+            {(tiebreakerMode || questionCounts.tiebreaker > 0) && (
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-2"
+              >
+                <Zap className="h-4 w-4 text-amber-400" />
+                <span className="text-sm font-medium text-amber-400/80">Tiebreaker Q</span>
+                {tiebreakerMode ? (
+                  <>
+                    <span className="text-xl font-bold text-amber-300">
+                      {Math.max(1, event.current_question - (currentRound?.question_count ?? 0))}
+                    </span>
+                    <span className="text-xs text-amber-500/70">
+                      / {currentRound?.tiebreaker_questions ?? 3}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-xl font-bold text-amber-300">{questionCounts.tiebreaker}</span>
+                    <span className="text-xs text-amber-500/70">attended</span>
+                  </>
+                )}
+              </motion.div>
+            )}
           </div>
 
-          {/* Right: Shortcuts help + Question Panel toggle */}
+          {/* Right: Restart + Shortcuts + History */}
           <div className="flex items-center gap-2">
+            {/* Restart Round button — static, always visible for active/completed rounds */}
+            {currentRound && (
+              <motion.button
+                whileHover={{ scale: 1.04 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setConfirmRestartOpen(true)}
+                disabled={submitting}
+                className="flex items-center gap-1.5 rounded-lg border border-red-500/25 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-400 hover:bg-red-500/20 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Restart Round — clears all scores for this round"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Restart</span>
+              </motion.button>
+            )}
+
             <button
               onClick={() => setQuestionPanelOpen((v) => !v)}
               className="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-white/[0.03] px-3 py-1.5 text-xs text-slate-400 hover:bg-white/[0.06] hover:text-white transition-colors"
@@ -1296,7 +1445,7 @@ setLeaderboardOpen((v) => !v);
                   }`}
                 >
                   {key === 'name' ? 'Name' : key === 'totalScore' ? 'Total' : 'Round'}
-                  {sortKey === key && (sortAsc ? ' \u2191' : ' \u2193')}
+                  {sortKey === key && (sortAsc ? ' ↑' : ' ↓')}
                 </button>
               ))}
             </div>
@@ -1342,7 +1491,7 @@ setLeaderboardOpen((v) => !v);
                 <div>
                   <p className="text-sm font-bold text-amber-300">Tiebreaker Mode</p>
                   <p className="text-[10px] text-amber-400/60">
-Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count ?? 0))}/{currentRound?.tiebreaker_questions ?? 3}
+                    Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count ?? 0))}/{currentRound?.tiebreaker_questions ?? 3}
                   </p>
                 </div>
               </div>
@@ -1359,24 +1508,42 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
             </div>
           </motion.div>
         )}
+
         {/* ---- Question history sidebar (collapsible) ---- */}
         <AnimatePresence>
           {questionPanelOpen && (
             <motion.aside
               initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 280, opacity: 1 }}
+              animate={{ width: 300, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ type: 'spring' as const, stiffness: 200, damping: 26 }}
               className="mr-5 flex-shrink-0 overflow-hidden"
             >
-              <div className="h-full w-[280px] rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 backdrop-blur-xl">
+              <div className="h-full w-[300px] rounded-2xl border border-white/[0.06] bg-white/[0.02] p-4 backdrop-blur-xl">
                 <div className="mb-3 flex items-center justify-between">
                   <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Question History</h3>
                   <button onClick={() => setQuestionPanelOpen(false)} className="text-slate-500 hover:text-white transition-colors">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
-                <div className="space-y-2 max-h-[calc(100vh-240px)] overflow-y-auto pr-1">
+
+                {/* Legend */}
+                <div className="mb-3 flex items-center gap-3 text-[10px] text-slate-500">
+                  <div className="flex items-center gap-1">
+                    <div className="h-2 w-2 rounded-full bg-cyan-500/60" />
+                    <span>Normal</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="h-2 w-2 rounded-full bg-amber-500/60" />
+                    <span>Tiebreaker</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <div className="h-2 w-2 rounded-full bg-slate-500/60" />
+                    <span>Skipped</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
                   {questionHistory.length === 0 && (
                     <p className="text-xs text-slate-500 py-4 text-center">No history yet</p>
                   )}
@@ -1385,91 +1552,158 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                       key={q.questionNumber}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      className="rounded-xl bg-white/[0.03] border border-white/[0.04] overflow-hidden"
+                      className={`rounded-xl border overflow-hidden ${
+                        q.isSkipped
+                          ? 'border-slate-500/20 bg-slate-500/5'
+                          : q.isTiebreaker
+                          ? 'border-amber-500/20 bg-amber-500/5'
+                          : 'border-white/[0.04] bg-white/[0.03]'
+                      }`}
                     >
-                      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/[0.04]">
-                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-cyan-500/20 text-[10px] font-bold text-cyan-300">
+                      <div className={`flex items-center gap-2 px-3 py-2 border-b ${
+                        q.isSkipped
+                          ? 'border-slate-500/10'
+                          : q.isTiebreaker
+                          ? 'border-amber-500/10'
+                          : 'border-white/[0.04]'
+                      }`}>
+                        <div className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold flex-shrink-0 ${
+                          q.isSkipped
+                            ? 'bg-slate-500/20 text-slate-400'
+                            : q.isTiebreaker
+                            ? 'bg-amber-500/20 text-amber-300'
+                            : 'bg-cyan-500/20 text-cyan-300'
+                        }`}>
                           {q.questionNumber}
                         </div>
-                        {q.winnerTeamName && (
-                          <span className="text-[10px] text-emerald-400 truncate">Won by {q.winnerTeamName}</span>
-                        )}
+                        <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                          {q.isTiebreaker && !q.isSkipped && (
+                            <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider text-amber-400 bg-amber-500/15 rounded px-1 py-0.5">TB</span>
+                          )}
+                          {q.isSkipped && (
+                            <span className="flex-shrink-0 text-[9px] font-bold uppercase tracking-wider text-slate-400 bg-slate-500/15 rounded px-1 py-0.5">Skipped</span>
+                          )}
+                          {q.winnerTeamName && !q.isSkipped && (
+                            <span className="text-[10px] text-emerald-400 truncate">Won by {q.winnerTeamName}</span>
+                          )}
+                        </div>
+
+                        {/* Rebuild/edit button for skipped or any question */}
+                        <button
+                          disabled={!!editingHistoryQuestion || !!deletingQuestion || currentRound?.status === 'completed'}
+                          onClick={async () => {
+                            if (!eventId || !currentRoundId || !!editingHistoryQuestion || !!deletingQuestion || currentRound?.status === 'completed') return;
+
+                            setDeletingQuestion(q.questionNumber);
+                            if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current);
+
+                            try {
+                              const originalQuestion = event!.current_question;
+
+                              // Backup scores before delete
+                              const scoresToBackup = scores.filter(
+                                (s) => s.round_id === currentRoundId && s.question_number === q.questionNumber
+                              );
+                              setEditBackupScores(scoresToBackup);
+
+                              // Delete all scores for this question (including skip entries)
+                              const { error: deleteError } = await supabase
+                                .from('scores')
+                                .delete()
+                                .eq('round_id', currentRoundId)
+                                .eq('question_number', q.questionNumber);
+
+                              if (deleteError) {
+                                showFeedback(`Failed to clear Q${q.questionNumber}: ${deleteError.message}`);
+                                setDeletingQuestion(null);
+                                return;
+                              }
+
+                              setScores((prev) =>
+                                prev.filter(
+                                  (s) => !(s.round_id === currentRoundId && s.question_number === q.questionNumber)
+                                )
+                              );
+
+                              deleteTimeoutRef.current = setTimeout(() => {
+                                setDeletingQuestion(null);
+                              }, 500);
+
+                              // Navigate to edit position
+                              await supabase
+                                .from('events')
+                                .update({ current_question: q.questionNumber })
+                                .eq('id', eventId);
+                              setEvent((prev) =>
+                                prev ? { ...prev, current_question: q.questionNumber } : prev
+                              );
+
+                              // Enter edit mode
+                              setEditingHistoryQuestion({
+                                targetQuestion: q.questionNumber,
+                                originalQuestion,
+                              });
+
+                              // If this was a skipped question, remove it from skip tracking
+                              // so the history entry updates from "Skipped" to the new score
+                              if (q.isSkipped && currentRound) {
+                                setSkippedQuestions((prev) => {
+                                  const roundSkips = new Set(prev[currentRound.id] ?? []);
+                                  roundSkips.delete(q.questionNumber);
+                                  return { ...prev, [currentRound.id]: roundSkips };
+                                });
+                              }
+
+                              showFeedback(
+                                q.isSkipped
+                                  ? `Q${q.questionNumber} (skipped) cleared — score teams to attend it now`
+                                  : `Q${q.questionNumber} cleared — score teams to rebuild`
+                              );
+                            } catch (err) {
+                              showFeedback(`Edit failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+                              setDeletingQuestion(null);
+                            }
+                          }}
+                          className={`ml-1 flex-shrink-0 flex items-center justify-center w-5 h-5 rounded transition-all text-white${
+                            editingHistoryQuestion || deletingQuestion || currentRound?.status === 'completed'
+                              ? 'text-slate-500 cursor-not-allowed opacity-40'
+                              : q.isSkipped
+                              ? 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 opacity-60 hover:opacity-100'
+                              : 'text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/20 opacity-60 hover:opacity-100'
+                          }`}
+                          title={
+                            editingHistoryQuestion || deletingQuestion
+                              ? 'Finish current operation'
+                              : currentRound?.status === 'completed'
+                              ? 'Round is completed (read-only)'
+                              : q.isSkipped
+                              ? 'Attend this skipped question'
+                              : 'Rebuild/edit this question'
+                          }
+                        >
+                          {deletingQuestion === q.questionNumber ? (
+                            <Loader2 className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <RotateCcw className="w-3 h-3" />
+                          )}
+                        </button>
                       </div>
-                      <div className="px-2 py-1.5 space-y-1">
-                        {q.actions.map((a) => (
-                          <div key={a.scoreId} className="flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-white/[0.03] group/action">
-                            <div className="flex-1 min-w-0">
-                              <p className="text-[11px] font-medium text-white/80 truncate">{a.teamName}</p>
-                              <p className="text-[9px] text-slate-500">
-                                {a.actionType.replace('_', ' ')} &middot; {a.points > 0 ? '+' : ''}{a.points}
-                              </p>
+
+                      {/* Actions list — not shown for pure skip entries */}
+                      {!q.isSkipped && q.actions.length > 0 && (
+                        <div className="px-2 py-1.5 space-y-1">
+                          {q.actions.map((a) => (
+                            <div key={a.scoreId} className="flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-white/[0.03] group/action">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[11px] font-medium text-white/80 truncate">{a.teamName}</p>
+                                <p className="text-[9px] text-slate-500">
+                                  {a.actionType.replace('_', ' ')} · {a.points > 0 ? '+' : ''}{a.points}
+                                </p>
+                              </div>
                             </div>
-                            <button
-                              disabled={!!editingHistoryQuestion || !!deletingQuestion || currentRound?.status === 'completed'}
-                              onClick={async () => {
-                                if (!eventId || !currentRoundId || !!editingHistoryQuestion || !!deletingQuestion || currentRound?.status === 'completed') return;
-                                
-                                setDeletingQuestion(q.questionNumber);
-                                if (deleteTimeoutRef.current) clearTimeout(deleteTimeoutRef.current);
-                                
-                                try {
-                                  const originalQuestion = event!.current_question;
-                                  
-                                  // Delete all scores for this question
-                                  const { error: deleteError } = await supabase
-                                    .from('scores')
-                                    .delete()
-                                    .eq('round_id', currentRoundId)
-                                    .eq('question_number', q.questionNumber);
-                                  
-                                  if (deleteError) {
-                                    showFeedback(`Failed to clear Q${q.questionNumber}: ${deleteError.message}`);
-                                    return;
-                                  }
-                                  
-                                  // Immediate local cleanup + debounce recompute
-                                  setScores((prev) =>
-                                    prev.filter(
-                                      (s) => !(s.round_id === currentRoundId && s.question_number === q.questionNumber)
-                                    )
-                                  );
-                                  
-                                  deleteTimeoutRef.current = setTimeout(() => {
-                                    setDeletingQuestion(null);
-                                  }, 500);
-                                  
-                                  // Navigate to edit position
-                                  await supabase
-                                    .from('events')
-                                    .update({ current_question: q.questionNumber })
-                                    .eq('id', eventId);
-                                  setEvent((prev) =>
-                                    prev ? { ...prev, current_question: q.questionNumber } : prev
-                                  );
-                                  
-                                  // Enter edit mode
-                                  setEditingHistoryQuestion({
-                                    targetQuestion: q.questionNumber,
-                                    originalQuestion,
-                                  });
-                                  showFeedback(`Q${q.questionNumber} cleared - score teams to rebuild`);
-                                } catch (err) {
-                                  showFeedback(`Edit failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-                                  setDeletingQuestion(null);
-                                }
-                              }}
-                              className={`ml-auto opacity-0 group-hover/action:opacity-100 flex items-center justify-center w-5 h-5 rounded transition-all ${editingHistoryQuestion || deletingQuestion || currentRound?.status === 'completed' ? 'text-slate-500 cursor-not-allowed' : 'text-amber-400 hover:text-amber-300 hover:bg-amber-500/20'}`}
-                              title={(editingHistoryQuestion || deletingQuestion) ? 'Finish current operation' : currentRound?.status === 'completed' ? 'Round is completed (read-only)' : 'Rebuild/edit this question'}
-                            >
-                              {deletingQuestion === q.questionNumber ? (
-                                <Loader2 className="w-3 h-3 animate-spin" />
-                              ) : (
-                                <RotateCcw className="w-3 h-3" />
-                              )}
-                            </button>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                     </motion.div>
                   ))}
                 </div>
@@ -1507,159 +1741,154 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                   : 'from-cyan-500/60 to-cyan-600/40';
 
                 return (
-                <motion.div
-                  key={team.id}
-                  custom={i}
-                  variants={cardVariants}
-                  initial="hidden"
-                  animate="visible"
-                  layout
-                  className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-xl transition-all hover:scale-[1.01] ${rankColors} ${isLeader ? 'shadow-[0_0_30px_-5px_rgba(234,179,8,0.15)]' : ''} ${!isTiebreakerTeam ? 'opacity-25 pointer-events-none' : ''}`}
-                >
-                  {/* Animated glow on score */}
-                  <AnimatePresence>
-                    {animatingTeamId === team.id && (
-                      <motion.div
-                        initial={{ opacity: 0.6 }}
-                        animate={{ opacity: 0 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.8 }}
-                        className="absolute inset-0 rounded-2xl bg-cyan-500/25 z-0"
-                      />
+                  <motion.div
+                    key={team.id}
+                    custom={i}
+                    variants={cardVariants}
+                    initial="hidden"
+                    animate="visible"
+                    layout
+                    className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br backdrop-blur-xl transition-all hover:scale-[1.01] ${rankColors} ${isLeader ? 'shadow-[0_0_30px_-5px_rgba(234,179,8,0.15)]' : ''} ${!isTiebreakerTeam ? 'opacity-25 pointer-events-none' : ''}`}
+                  >
+                    {/* Animated glow on score */}
+                    <AnimatePresence>
+                      {animatingTeamId === team.id && (
+                        <motion.div
+                          initial={{ opacity: 0.6 }}
+                          animate={{ opacity: 0 }}
+                          exit={{ opacity: 0 }}
+                          transition={{ duration: 0.8 }}
+                          className="absolute inset-0 rounded-2xl bg-cyan-500/25 z-0"
+                        />
+                      )}
+                    </AnimatePresence>
+
+                    {/* Card header */}
+                    <div className="relative z-10 flex items-start gap-3 p-4 pb-2">
+                      <div className={`flex items-center justify-center w-9 h-9 rounded-xl text-sm font-black flex-shrink-0 ${rankBadge}`}>
+                        #{rank}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-base font-bold text-white truncate">{team.name}</h3>
+                        <p className="text-[11px] text-slate-400 truncate mt-0.5">{team.lead}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                        <motion.div
+                          key={`total-${team.totalScore}`}
+                          variants={pulseVariants}
+                          initial="initial"
+                          animate={animatingTeamId === team.id ? 'pulse' : 'initial'}
+                          className="flex items-center gap-1.5"
+                        >
+                          <span className={`text-2xl font-black tabular-nums ${isLeader ? 'text-yellow-400' : 'text-white'}`}>{team.totalScore}</span>
+                        </motion.div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs font-semibold text-cyan-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
+                          <span className="text-[10px] text-slate-400">this round</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Score progress bar */}
+                    <div className="relative z-10 mx-4 mb-3">
+                      <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+                        <motion.div
+                          className={`h-full rounded-full bg-gradient-to-r ${barGradient}`}
+                          initial={{ width: '0%' }}
+                          animate={{ width: `${barPercent}%` }}
+                          transition={{ duration: 0.6, ease: 'easeOut' }}
+                        />
+                      </div>
+                    </div>
+
+                    {/* Scoring Buttons — hidden for completed rounds */}
+                    {currentRound?.status === 'completed' ? (
+                      <div className="relative z-10 px-4 pb-4">
+                        <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-500/20 bg-slate-500/5 px-3 py-3">
+                          <CheckCircle2 className="h-4 w-4 text-slate-400" />
+                          <span className="text-xs font-medium text-slate-400">Round Completed</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative z-10 grid grid-cols-3 gap-1.5 px-4 pb-4">
+                        <motion.button
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => handleScore(team.id, 'bounce')}
+                          disabled={submitting}
+                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-emerald-300 transition-all hover:bg-emerald-500/20 hover:shadow-[0_0_12px_-3px_rgba(16,185,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Zap className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Bounce</span>
+                          <span className="text-[9px] text-emerald-400/50">+{currentRound?.bounce_points ?? 0}</span>
+                        </motion.button>
+
+                        <motion.button
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => handleScore(team.id, 'pounce_plus')}
+                          disabled={submitting}
+                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-blue-500/10 border border-blue-500/20 px-2 py-2 text-blue-300 transition-all hover:bg-blue-500/20 hover:shadow-[0_0_12px_-3px_rgba(59,130,246,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Target className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Pounce+</span>
+                          <span className="text-[9px] text-blue-400/50">+{currentRound?.pounce_plus ?? 0}</span>
+                        </motion.button>
+
+                        <motion.button
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => handleScore(team.id, 'pounce_minus')}
+                          disabled={submitting}
+                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-red-500/10 border border-red-500/20 px-2 py-2 text-red-300 transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_-3px_rgba(239,68,68,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Minus className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Pounce-</span>
+                          <span className="text-[9px] text-red-400/50">{currentRound?.pounce_minus ?? 0}</span>
+                        </motion.button>
+
+                        <motion.button
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => handleScore(team.id, 'buzzer')}
+                          disabled={submitting}
+                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-amber-500/10 border border-amber-500/20 px-2 py-2 text-amber-300 transition-all hover:bg-amber-500/20 hover:shadow-[0_0_12px_-3px_rgba(245,158,11,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Award className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Buzzer</span>
+                          <span className="text-[9px] text-amber-400/50">+{currentRound?.bounce_points ?? 0}</span>
+                        </motion.button>
+
+                        <motion.button
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => handleScore(team.id, 'buzzer_minus')}
+                          disabled={submitting}
+                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-orange-500/10 border border-orange-500/20 px-2 py-2 text-orange-300 transition-all hover:bg-orange-500/20 hover:shadow-[0_0_12px_-3px_rgba(249,115,22,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <AlertCircle className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Buzz-</span>
+                          <span className="text-[9px] text-orange-400/50">-{currentRound?.bounce_points ?? 0}</span>
+                        </motion.button>
+
+                        <motion.button
+                          whileHover={{ scale: 1.06 }}
+                          whileTap={{ scale: 0.92 }}
+                          onClick={() => {
+                            setBonusTeamId(team.id);
+                            setBonusPoints('');
+                            setBonusModalOpen(true);
+                          }}
+                          disabled={submitting}
+                          className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 px-2 py-2 text-cyan-300 transition-all hover:bg-cyan-500/20 hover:shadow-[0_0_12px_-3px_rgba(6,182,212,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <Gift className="h-4 w-4" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">Bonus</span>
+                          <span className="text-[9px] text-cyan-400/50">custom</span>
+                        </motion.button>
+                      </div>
                     )}
-                  </AnimatePresence>
-
-                  {/* Card header */}
-                  <div className="relative z-10 flex items-start gap-3 p-4 pb-2">
-                    {/* Rank badge */}
-                    <div className={`flex items-center justify-center w-9 h-9 rounded-xl text-sm font-black flex-shrink-0 ${rankBadge}`}>
-                      #{rank}
-                    </div>
-
-                    {/* Team info */}
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-base font-bold text-white truncate">{team.name}</h3>
-                      <p className="text-[11px] text-slate-400 truncate mt-0.5">{team.lead}</p>
-                    </div>
-
-                    {/* Scores */}
-                    <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
-                      <motion.div
-                        key={`total-${team.totalScore}`}
-                        variants={pulseVariants}
-                        initial="initial"
-                        animate={animatingTeamId === team.id ? 'pulse' : 'initial'}
-                        className="flex items-center gap-1.5"
-                      >
-                        <span className={`text-2xl font-black tabular-nums ${isLeader ? 'text-yellow-400' : 'text-white'}`}>{team.totalScore}</span>
-                      </motion.div>
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-cyan-400/80 tabular-nums">{team.roundScore >= 0 ? '+' : ''}{team.roundScore}</span>
-                        <span className="text-[10px] text-slate-400">this round</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Score progress bar */}
-                  <div className="relative z-10 mx-4 mb-3">
-                    <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
-                      <motion.div
-                        className={`h-full rounded-full bg-gradient-to-r ${barGradient}`}
-                        initial={{ width: '0%' }}
-                        animate={{ width: `${barPercent}%` }}
-                        transition={{ duration: 0.6, ease: 'easeOut' }}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Scoring Buttons — hidden for completed rounds */}
-                  {currentRound?.status === 'completed' ? (
-                    <div className="relative z-10 px-4 pb-4">
-                      <div className="flex items-center justify-center gap-2 rounded-xl border border-slate-500/20 bg-slate-500/5 px-3 py-3">
-                        <CheckCircle2 className="h-4 w-4 text-slate-400" />
-                        <span className="text-xs font-medium text-slate-400">Round Completed</span>
-                      </div>
-                    </div>
-                  ) : (
-                  <div className="relative z-10 grid grid-cols-3 gap-1.5 px-4 pb-4">
-                    <motion.button
-                      whileHover={{ scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => handleScore(team.id, 'bounce')}
-                      disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 px-2 py-2 text-emerald-300 transition-all hover:bg-emerald-500/20 hover:shadow-[0_0_12px_-3px_rgba(16,185,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Zap className="h-4 w-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Bounce</span>
-                      <span className="text-[9px] text-emerald-400/50">+{currentRound?.bounce_points ?? 0}</span>
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => handleScore(team.id, 'pounce_plus')}
-                      disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-blue-500/10 border border-blue-500/20 px-2 py-2 text-blue-300 transition-all hover:bg-blue-500/20 hover:shadow-[0_0_12px_-3px_rgba(59,130,246,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Target className="h-4 w-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Pounce+</span>
-                      <span className="text-[9px] text-blue-400/50">+{currentRound?.pounce_plus ?? 0}</span>
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => handleScore(team.id, 'pounce_minus')}
-                      disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-red-500/10 border border-red-500/20 px-2 py-2 text-red-300 transition-all hover:bg-red-500/20 hover:shadow-[0_0_12px_-3px_rgba(239,68,68,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Minus className="h-4 w-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Pounce-</span>
-                      <span className="text-[9px] text-red-400/50">{currentRound?.pounce_minus ?? 0}</span>
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => handleScore(team.id, 'buzzer')}
-                      disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-amber-500/10 border border-amber-500/20 px-2 py-2 text-amber-300 transition-all hover:bg-amber-500/20 hover:shadow-[0_0_12px_-3px_rgba(245,158,11,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Award className="h-4 w-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Buzzer</span>
-                      <span className="text-[9px] text-amber-400/50">+{currentRound?.bounce_points ?? 0}</span>
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => handleScore(team.id, 'buzzer_minus')}
-                      disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-orange-500/10 border border-orange-500/20 px-2 py-2 text-orange-300 transition-all hover:bg-orange-500/20 hover:shadow-[0_0_12px_-3px_rgba(249,115,22,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <AlertCircle className="h-4 w-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Buzz-</span>
-                      <span className="text-[9px] text-orange-400/50">-{currentRound?.bounce_points ?? 0}</span>
-                    </motion.button>
-
-                    <motion.button
-                      whileHover={{ scale: 1.06 }}
-                      whileTap={{ scale: 0.92 }}
-                      onClick={() => {
-                        setBonusTeamId(team.id);
-                        setBonusPoints('');
-                        setBonusModalOpen(true);
-                      }}
-                      disabled={submitting}
-                      className="flex flex-col items-center justify-center gap-0.5 rounded-xl bg-cyan-500/10 border border-cyan-500/20 px-2 py-2 text-cyan-300 transition-all hover:bg-cyan-500/20 hover:shadow-[0_0_12px_-3px_rgba(6,182,212,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Gift className="h-4 w-4" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider">Bonus</span>
-                      <span className="text-[9px] text-cyan-400/50">custom</span>
-                    </motion.button>
-                  </div>
-                  )}
-                </motion.div>
+                  </motion.div>
                 );
               })}
             </div>
@@ -1667,7 +1896,7 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
 
           {/* ---- Bottom Actions ---- */}
           <div className="mt-8 flex flex-wrap items-center justify-center gap-4 pb-24">
-            {/* View Stats / Final Results — always visible */}
+            {/* View Stats / Final Results */}
             <motion.button
               whileHover={{ scale: 1.03 }}
               whileTap={{ scale: 0.97 }}
@@ -1678,7 +1907,7 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               {isLastRound ? 'Final Results' : 'Round Stats'}
             </motion.button>
 
-            {/* Skip Question — only when round is active and questions remain */}
+            {/* Skip Question */}
             {currentRound?.status === 'active' && event.current_question <= (currentRound?.question_count ?? 0) && !tiebreakerMode && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
@@ -1692,7 +1921,7 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               </motion.button>
             )}
 
-            {/* Tiebreaker button — when ties exist after all questions answered */}
+            {/* Tiebreaker button */}
             {(!tiebreakerMode && !roundTiebreakerStates[currentRoundId ?? '']?.mode) && tiedTeamsInfo.hasTies && currentRound?.status === 'active' && event.current_question > (currentRound?.question_count ?? 0) && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
@@ -1706,24 +1935,30 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
               </motion.button>
             )}
 
-            {/* Complete Round — when all questions answered, no ties, and round is active */}
-            {currentRound?.status === 'active' &&
-             event.current_question > (currentRound?.question_count ?? 0) &&
-             !tiedTeamsInfo.hasTies && !tiebreakerMode && (
+            {/* Complete Round button */}
+            {currentRound?.status === 'active' && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
                 whileTap={{ scale: 0.97 }}
                 onClick={handleCompleteRound}
-                disabled={submitting}
-                className="flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 transition-colors hover:bg-emerald-500/20 hover:shadow-lg disabled:opacity-40"
+                disabled={submitting || remainingQuestions > 0}
+                className={`flex items-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-all hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed ${
+                  remainingQuestions > 0
+                    ? 'border-orange-500/30 bg-orange-500/10 text-orange-300 hover:bg-orange-500/20'
+                    : 'border-emerald-500/20 bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20'
+                }`}
+                title={remainingQuestions > 0 ? `Solve ${remainingQuestions} more questions first` : 'Complete round and view stats'}
               >
-                <CheckCircle2 className="h-4 w-4" />
-                Complete Round
-                {!isLastRound && <ChevronRight className="h-4 w-4" />}
+                <CheckCircle2 className={`h-4 w-4 ${remainingQuestions > 0 ? 'text-orange-400' : 'text-emerald-400'}`} />
+                {remainingQuestions > 0
+                  ? `Complete (${remainingQuestions} left)`
+                  : `Complete → Stats`
+                }
+                {!isLastRound && remainingQuestions <= 0 && <ChevronRight className="h-4 w-4" />}
               </motion.button>
             )}
 
-            {/* Reopen Round — only for completed rounds, shows confirmation */}
+            {/* Reopen Round */}
             {canReopenRound && (
               <motion.button
                 whileHover={{ scale: 1.03 }}
@@ -1988,7 +2223,11 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                   <h3 className="text-lg font-bold">Edit Score</h3>
                 </div>
                 <button
-                  onClick={() => setEditModalOpen(false)}
+                  onClick={() => {
+                    setEditModalOpen(false);
+                    setEditingScore(null);
+                    setEditPoints('');
+                  }}
                   className="rounded-lg p-1.5 text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
                 >
                   <X className="h-4 w-4" />
@@ -2011,14 +2250,24 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') handleEditScore();
+                    if (e.key === 'Escape') {
+                      setEditModalOpen(false);
+                      setEditingScore(null);
+                      setEditPoints('');
+                    }
                   }}
                   className={inputCls}
                 />
               </div>
 
               <div className="mt-5 flex gap-3">
+                {/* Cancel — exits edit mode, keeps original value */}
                 <button
-                  onClick={() => setEditModalOpen(false)}
+                  onClick={() => {
+                    setEditModalOpen(false);
+                    setEditingScore(null);
+                    setEditPoints('');
+                  }}
                   className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] py-2.5 text-sm font-medium text-slate-400 hover:bg-white/[0.06] transition-colors"
                 >
                   Cancel
@@ -2076,6 +2325,75 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
                 </div>
               ))}
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ================================================================== */}
+      {/*  RESTART ROUND CONFIRMATION MODAL                                  */}
+      {/* ================================================================== */}
+      <AnimatePresence>
+        {confirmRestartOpen && (
+          <motion.div
+            variants={overlayVariants}
+            initial="hidden"
+            animate="visible"
+            exit="exit"
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            onClick={() => setConfirmRestartOpen(false)}
+          >
+            <motion.div
+              variants={modalVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              onClick={(e) => e.stopPropagation()}
+              className="relative w-full max-w-md rounded-2xl border border-white/[0.08] bg-slate-900/95 p-6 shadow-2xl backdrop-blur-xl"
+            >
+              <div className="flex items-center gap-3 mb-4">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/10">
+                  <RefreshCw className="h-5 w-5 text-red-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-white">Restart Round?</h2>
+                  <p className="text-xs text-slate-400">{currentRound?.round_name}</p>
+                </div>
+              </div>
+
+              <div className="mb-6 space-y-3">
+                <p className="text-sm text-slate-300">
+                  This will permanently clear all scores for this round and reset the question counter to 1.
+                </p>
+                <div className="space-y-2 text-xs text-slate-400 border-l-2 border-red-500/30 pl-3 py-1 bg-red-500/5 rounded-r-lg">
+                  <p className="font-medium text-red-400">This action cannot be undone:</p>
+                  <ul className="list-disc list-inside space-y-1">
+                    <li>All scores for <span className="text-white/70 font-medium">{currentRound?.round_name}</span> will be deleted</li>
+                    <li>Question counter resets to <span className="text-red-300 font-medium">Q1</span></li>
+                    <li>Tiebreaker state is cleared</li>
+                    {currentRound?.status === 'completed' && (
+                      <li>Round status reverts to <span className="text-red-300 font-medium">active</span></li>
+                    )}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => setConfirmRestartOpen(false)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-white/[0.08] bg-white/[0.03] text-slate-300 font-medium hover:bg-white/[0.06] transition-colors text-sm"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleRestartRound}
+                  disabled={submitting}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-red-600 hover:bg-red-500 text-white font-medium transition-colors text-sm flex items-center justify-center gap-2 disabled:opacity-40"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Restart Round
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -2151,12 +2469,8 @@ Tiebreaker Q{Math.max(1, event.current_question - (currentRound?.question_count 
         )}
       </AnimatePresence>
 
-      {/* ================================================================== */}
-      {/*  FINAL RESULTS CONFIRMATION MODAL                                  */}
-      {/* ================================================================== */}
-      <AnimatePresence>
-
-      </AnimatePresence>
+      {/* Empty AnimatePresence placeholder kept for future modals */}
+      <AnimatePresence />
     </AppLayout>
   );
 }
