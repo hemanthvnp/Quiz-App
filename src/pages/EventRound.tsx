@@ -146,6 +146,10 @@ export default function EventRound() {
   // ---- Reopen Round confirmation ----
   const [confirmReopenOpen, setConfirmReopenOpen] = useState(false);
 
+  // ---- Skipped questions — tracked in state, NOT in DB (team_id is NOT NULL) ----
+  // Shape: { [roundId]: Set<questionNumber> }
+  const [skippedQuestions, setSkippedQuestions] = useState<Record<string, Set<number>>>({});
+
   // ---- Refs ----
   const autoCompleteTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const feedbackTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -201,6 +205,7 @@ export default function EventRound() {
   }, [teamsWithScores, sortKey, sortAsc, filterMode]);
 
   // ---- Question history: includes normal, tiebreaker, and skipped questions ----
+  // Skipped questions come from local state (not DB) because team_id is NOT NULL in scores.
   const questionHistory = useMemo(() => {
     if (!currentRoundId || !currentRound) return [];
 
@@ -219,29 +224,27 @@ export default function EventRound() {
       winnerTeamName: string | null;
     }>();
 
+    // First pass: build from actual score records
     roundScores.forEach((s) => {
       const team = teams.find((t) => t.id === s.team_id);
       const isTiebreaker = s.question_number > currentRound.question_count;
-      const isSkipped = s.action_type === 'skip';
 
       if (!map.has(s.question_number)) {
         map.set(s.question_number, {
           questionNumber: s.question_number,
           isTiebreaker,
-          isSkipped,
+          isSkipped: false,
           actions: [],
           winnerTeamName: null,
         });
       }
       const entry = map.get(s.question_number)!;
-      // Keep tiebreaker/skip flags accurate even if already set
       if (isTiebreaker) entry.isTiebreaker = true;
-      if (isSkipped) entry.isSkipped = true;
 
       entry.actions.push({
         scoreId: s.id,
         teamId: s.team_id,
-        teamName: team?.name ?? (isSkipped ? 'Skipped' : 'Unknown'),
+        teamName: team?.name ?? 'Unknown',
         actionType: s.action_type as ActionType,
         points: s.points,
       });
@@ -252,8 +255,25 @@ export default function EventRound() {
       }
     });
 
+    // Second pass: inject skipped questions from local state
+    const roundSkips = skippedQuestions[currentRound.id] ?? new Set<number>();
+    roundSkips.forEach((qNum) => {
+      if (!map.has(qNum)) {
+        map.set(qNum, {
+          questionNumber: qNum,
+          isTiebreaker: qNum > currentRound.question_count,
+          isSkipped: true,
+          actions: [],
+          winnerTeamName: null,
+        });
+      } else {
+        // If scores exist for this question, it was re-attended — don't mark as skipped
+        // (skip was cleared when rebuilding via history edit)
+      }
+    });
+
     return Array.from(map.values()).sort((a, b) => a.questionNumber - b.questionNumber);
-  }, [scores, currentRoundId, currentRound, teams]);
+  }, [scores, currentRoundId, currentRound, teams, skippedQuestions]);
 
   // ---- Separate question counts for normal vs tiebreaker ----
   const questionCounts = useMemo(() => {
@@ -570,6 +590,12 @@ export default function EventRound() {
           delete newStates[currentRoundId];
           return newStates;
         });
+        // Clear skipped questions for this round
+        setSkippedQuestions((prev) => {
+          const newSkips = { ...prev };
+          delete newSkips[currentRound.id];
+          return newSkips;
+        });
       }
       setTiebreakerMode(false);
       setTiebreakerTeamIds(new Set());
@@ -776,7 +802,7 @@ export default function EventRound() {
   const handleSkipQuestion = useCallback(async () => {
     if (!event || !currentRound || !eventId || submittingRef.current) return;
     if (currentRound.status !== 'active') return;
-    if (event.current_question > (currentRound.question_count || 0)) return;
+    if (event.current_question > currentRound.question_count) return;
 
     submittingRef.current = true;
     setSubmitting(true);
@@ -784,26 +810,15 @@ export default function EventRound() {
       const skippedQ = event.current_question;
       const nextQ = skippedQ + 1;
 
-      // Insert a 'skip' score record so it appears in history
-      const { data: insertedSkip, error: insertError } = await supabase
-        .from('scores')
-        .insert({
-          event_id: eventId,
-          round_id: currentRound.id,
-          team_id: null,           // no team for a skip
-          question_number: skippedQ,
-          action_type: 'skip',
-          points: 0,
-          winning_team_id: null,
-        })
-        .select()
-        .single();
+      // Track skipped question in local state only — no DB insert because
+      // the scores table has team_id NOT NULL, and skips have no team.
+      setSkippedQuestions((prev) => {
+        const roundSkips = new Set(prev[currentRound.id] ?? []);
+        roundSkips.add(skippedQ);
+        return { ...prev, [currentRound.id]: roundSkips };
+      });
 
-      if (insertError) throw insertError;
-
-      setScores((prev) => [...prev, insertedSkip as Score]);
-
-      // Advance question counter
+      // Advance question counter in DB
       const { error: updateError } = await supabase
         .from('events')
         .update({ current_question: nextQ })
@@ -985,6 +1000,7 @@ export default function EventRound() {
         setRoundDropdownOpen(false);
         setLastAction(null);
         setEditingHistoryQuestion(null);
+        // Skipped questions are per-round; state is preserved in skippedQuestions map
 
         const tbState = roundTiebreakerStates[roundId];
         if (tbState) {
@@ -1605,6 +1621,17 @@ export default function EventRound() {
                                 targetQuestion: q.questionNumber,
                                 originalQuestion,
                               });
+
+                              // If this was a skipped question, remove it from skip tracking
+                              // so the history entry updates from "Skipped" to the new score
+                              if (q.isSkipped && currentRound) {
+                                setSkippedQuestions((prev) => {
+                                  const roundSkips = new Set(prev[currentRound.id] ?? []);
+                                  roundSkips.delete(q.questionNumber);
+                                  return { ...prev, [currentRound.id]: roundSkips };
+                                });
+                              }
+
                               showFeedback(
                                 q.isSkipped
                                   ? `Q${q.questionNumber} (skipped) cleared — score teams to attend it now`
