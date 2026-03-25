@@ -680,7 +680,7 @@ export default function EventRound() {
           break;
       }
 
-      const isPositive = ['bounce', 'pounce_plus', 'buzzer', 'bonus'].includes(actionType) && points > 0;
+      const isPositive = ['bounce', 'pounce_plus', 'buzzer'].includes(actionType) && points > 0;
 
       if (!tiebreakerMode && isPositive && event.current_question > currentRound.question_count) {
         showFeedback(`All ${currentRound.question_count} questions answered — complete the round`);
@@ -1729,6 +1729,28 @@ export default function EventRound() {
                                   {a.actionType.replace('_', ' ')} · {a.points > 0 ? '+' : ''}{a.points}
                                 </p>
                               </div>
+                              {/* Edit score button */}
+                              <button
+                                onClick={() => {
+                                  setEditingScore({
+                                    scoreId: a.scoreId,
+                                    teamName: a.teamName,
+                                    actionType: a.actionType,
+                                    currentPoints: a.points,
+                                  });
+                                  setEditPoints(String(a.points));
+                                  setEditModalOpen(true);
+                                }}
+                                disabled={currentRound?.status === 'completed'}
+                                className={`flex-shrink-0 p-1 rounded transition-all opacity-0 group-hover/action:opacity-100 ${
+                                  currentRound?.status === 'completed'
+                                    ? 'text-slate-600 cursor-not-allowed'
+                                    : 'text-slate-400 hover:text-cyan-400 hover:bg-cyan-500/10'
+                                }`}
+                                title={currentRound?.status === 'completed' ? 'Round is completed' : 'Edit score'}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </button>
                             </div>
                           ))}
                         </div>
