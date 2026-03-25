@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { ArrowLeft, ChevronRight, Trophy, Hash, Zap, Target, AlertCircle, Award, Gift, Minus, BarChart3 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Trophy, Hash, Zap, Target, AlertCircle, Award, Gift, Minus, BarChart3, LayoutGrid } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import ScoreBar from '../components/ScoreBar';
+import BarChart from '../components/BarChart';
 import { AppLayout, AppHeader, LoadingScreen } from '../components/Layout';
 
 interface Round {
@@ -75,9 +76,11 @@ export default function RoundStats() {
   // Removed unused eventData variable
   const [nextRoundId, setNextRoundId] = useState<string | null>(null);
   const [allRounds, setAllRounds] = useState<Round[]>([]);
+  const [allRoundScores, setAllRoundScores] = useState<Record<string, TeamRoundScore[]>>({});
   const [incompleteRounds, setIncompleteRounds] = useState<Round[]>([]);
   const [showFinalResultsModal, setShowFinalResultsModal] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [viewMode, setViewMode] = useState<'list' | 'chart'>('chart');
 
   // Removed unused isEventCompleted variable
 
@@ -176,6 +179,28 @@ export default function RoundStats() {
       setAllRounds(allRounds);
       const incomplete = allRounds.filter((r) => r.status !== 'completed');
       setIncompleteRounds(incomplete);
+
+      // Compute scores for ALL rounds (for round breakdown section)
+      const allRoundScoresMap: Record<string, TeamRoundScore[]> = {};
+      allRounds.forEach((r) => {
+        const roundScoreMap = new Map<string, number>();
+        teamsData.forEach((t) => roundScoreMap.set(t.id, 0));
+        allScoresData
+          .filter((s) => s.round_id === r.id)
+          .forEach((s) => {
+            roundScoreMap.set(s.team_id, (roundScoreMap.get(s.team_id) || 0) + (s.points || 0));
+          });
+        const sorted = Array.from(roundScoreMap.entries())
+          .map(([teamId, score]) => ({ teamId, teamName: teamMap.get(teamId) || 'Unknown', roundScore: score, rank: 0 }))
+          .sort((a, b) => b.roundScore - a.roundScore);
+        let rank = 1;
+        sorted.forEach((e, i) => {
+          if (i > 0 && e.roundScore < sorted[i - 1].roundScore) rank = i + 1;
+          e.rank = rank;
+        });
+        allRoundScoresMap[r.id] = sorted;
+      });
+      setAllRoundScores(allRoundScoresMap);
 
       // Next round - navigate to event round if next is not completed, to stats if completed
       if (roundData && allRounds.length > 0) {
@@ -281,27 +306,65 @@ export default function RoundStats() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
           >
-            <div className="flex items-center gap-3 mb-4">
-              <BarChart3 className="w-5 h-5 text-cyan-400" />
-              <h2 className="text-base font-semibold text-slate-300 uppercase tracking-wider">Round Rankings</h2>
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <BarChart3 className="w-5 h-5 text-cyan-400" />
+                <h2 className="text-base font-semibold text-slate-300 uppercase tracking-wider">Round Rankings</h2>
+              </div>
+              
+              {/* View Toggle */}
+              <div className="flex items-center bg-white/[0.04] p-1 rounded-lg border border-white/[0.06]">
+                <button
+                  onClick={() => setViewMode('list')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'list' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                  title="List View"
+                >
+                  <LayoutGrid className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setViewMode('chart')}
+                  className={`p-1.5 rounded-md transition-all ${viewMode === 'chart' ? 'bg-cyan-500 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                  title="Chart View"
+                >
+                  <BarChart3 className="w-4 h-4" />
+                </button>
+              </div>
             </div>
-            <div className="space-y-2">
-              {roundScores.map((ts, idx) => (
-                <ScoreBar
-                  key={ts.teamId}
-                  rank={ts.rank}
-                  teamName={ts.teamName}
-                  score={ts.roundScore}
-                  maxScore={roundScores[0]?.roundScore || 1}
-                  index={idx}
-                />
-              ))}
-              {roundScores.length === 0 && (
-                <div className="px-5 py-10 text-center text-slate-500 text-sm rounded-2xl border border-white/[0.06] bg-white/[0.02]">
-                  No scores yet.
-                </div>
-              )}
-            </div>
+
+            {viewMode === 'list' ? (
+              <div className="space-y-2">
+                {roundScores.map((ts, idx) => (
+                  <ScoreBar
+                    key={ts.teamId}
+                    rank={ts.rank}
+                    teamName={ts.teamName}
+                    score={ts.roundScore}
+                    maxScore={roundScores[0]?.roundScore || 1}
+                    index={idx}
+                  />
+                ))}
+                {roundScores.length === 0 && (
+                  <div className="px-5 py-10 text-center text-slate-500 text-sm rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+                    No scores yet.
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {roundScores.length > 0 ? (
+                  <BarChart data={roundScores.map(rs => ({ 
+                    teamId: rs.teamId, 
+                    teamName: rs.teamName, 
+                    score: rs.roundScore, 
+                    rank: rs.rank 
+                  }))} />
+                ) : (
+                  <div className="px-5 py-10 text-center text-slate-500 text-sm rounded-2xl border border-white/[0.06] bg-white/[0.02]">
+                    No scores yet.
+                  </div>
+                )}
+              </div>
+            )}
           </motion.section>
 
           {/* Overall Standings */}
@@ -393,6 +456,90 @@ export default function RoundStats() {
             )}
           </div>
         </motion.section>
+
+        {/* ---- Round Breakdown (All Rounds) ---- */}
+        {allRounds.length > 0 && (
+          <motion.section
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+          >
+            <div className="flex items-center gap-3 mb-6">
+              <BarChart3 className="w-5 h-5 text-cyan-400" />
+              <h2 className="text-base font-semibold text-slate-300 uppercase tracking-wider">Round Breakdown</h2>
+            </div>
+            <div className="space-y-6">
+              {allRounds.map((r, roundIdx) => {
+                const scores = allRoundScores[r.id] || [];
+                const maxScore = scores[0]?.roundScore || 1;
+                const isCurrentRound = r.id === roundId;
+
+                return (
+                  <motion.div
+                    key={r.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.4 + roundIdx * 0.1 }}
+                    className={`rounded-2xl border p-5 ${
+                      isCurrentRound
+                        ? 'border-cyan-500/30 bg-cyan-500/5'
+                        : 'border-white/[0.06] bg-white/[0.02]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg font-bold text-sm ${
+                          isCurrentRound
+                            ? 'bg-cyan-500/20 text-cyan-400'
+                            : 'bg-white/[0.06] text-slate-400'
+                        }`}>
+                          {r.round_number}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white flex items-center gap-2">
+                            {r.round_name}
+                            {isCurrentRound && (
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400 bg-cyan-500/15 rounded px-1.5 py-0.5">
+                                Current
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-slate-500">{r.question_count} questions</p>
+                        </div>
+                      </div>
+                      {!isCurrentRound && r.status === 'completed' && (
+                        <button
+                          onClick={() => navigate(`/events/${eventId}/rounds/${r.id}/stats`)}
+                          className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+                        >
+                          View <ChevronRight className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-2">
+                      {scores.length > 0 ? (
+                        scores.map((entry, idx) => (
+                          <ScoreBar
+                            key={entry.teamId}
+                            rank={entry.rank}
+                            teamName={entry.teamName}
+                            score={entry.roundScore}
+                            maxScore={maxScore}
+                            index={idx}
+                          />
+                        ))
+                      ) : (
+                        <div className="px-4 py-6 text-center text-slate-500 text-sm rounded-xl border border-white/[0.04] bg-white/[0.02]">
+                          No scores yet
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          </motion.section>
+        )}
 
         {/* ---- Round Info Bar ---- */}
         {round && (

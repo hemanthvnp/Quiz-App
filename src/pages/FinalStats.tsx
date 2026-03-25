@@ -400,34 +400,81 @@ export default function FinalStats() {
             </motion.div>
           )}
 
-          {/* Round-wise stats links */}
+          {/* Round-wise Bar Graphs */}
           {rounds.length > 0 && (
             <motion.section
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 1.2 }}
             >
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex items-center gap-3 mb-6">
                 <BarChart3 className="w-5 h-5 text-cyan-400" />
                 <h3 className="text-base font-semibold text-slate-300 uppercase tracking-wider">
-                  Round Details
+                  Round Breakdown
                 </h3>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {rounds.map((r) => (
-                  <motion.button
-                    key={r.id}
-                    whileHover={{ y: -2 }}
-                    onClick={() => navigate(`/events/${eventId}/rounds/${r.id}/stats`)}
-                    className="flex items-center justify-between gap-3 px-5 py-4 rounded-2xl border border-white/[0.06] bg-white/[0.02] hover:bg-white/[0.05] transition-colors text-left"
-                  >
-                    <div>
-                      <p className="text-sm font-semibold text-white">{r.round_name}</p>
-                      <p className="text-xs text-slate-500">Round {r.round_number}</p>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-slate-500" />
-                  </motion.button>
-                ))}
+              <div className="space-y-8">
+                {rounds.map((r, roundIdx) => {
+                  // Get scores for this round sorted by score
+                  const roundTeamScores = leaderboard
+                    .map((entry) => ({
+                      teamId: entry.teamId,
+                      teamName: entry.teamName,
+                      roundScore: entry.roundScores[r.id] || 0,
+                    }))
+                    .sort((a, b) => b.roundScore - a.roundScore);
+
+                  // Calculate rank with ties
+                  let currentRank = 1;
+                  const rankedScores = roundTeamScores.map((entry, idx) => {
+                    if (idx > 0 && entry.roundScore < roundTeamScores[idx - 1].roundScore) {
+                      currentRank = idx + 1;
+                    }
+                    return { ...entry, rank: currentRank };
+                  });
+
+                  const maxRoundScore = rankedScores[0]?.roundScore || 1;
+
+                  return (
+                    <motion.div
+                      key={r.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 1.3 + roundIdx * 0.1 }}
+                      className="rounded-2xl border border-white/[0.06] bg-white/[0.02] p-5"
+                    >
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-500/10 text-cyan-400 font-bold text-sm">
+                            {r.round_number}
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-white">{r.round_name}</p>
+                            <p className="text-xs text-slate-500">{r.question_count} questions</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => navigate(`/events/${eventId}/rounds/${r.id}/stats`)}
+                          className="text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1"
+                        >
+                          Details <ChevronRight className="w-3 h-3" />
+                        </button>
+                      </div>
+                      <div className="space-y-2">
+                        {rankedScores.map((entry, idx) => (
+                          <ScoreBar
+                            key={entry.teamId}
+                            rank={entry.rank}
+                            teamName={entry.teamName}
+                            score={entry.roundScore}
+                            maxScore={maxRoundScore}
+                            index={idx}
+                          />
+                        ))}
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </motion.section>
           )}
