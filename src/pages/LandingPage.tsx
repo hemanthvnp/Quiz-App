@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
-import { motion, useScroll, useTransform, useMotionValue, useSpring, AnimatePresence } from "framer-motion";
+import { motion, useScroll, useTransform, useMotionValue, useSpring } from "framer-motion";
+import Podium from "../components/Podium";
 
 /* ================================================================== */
 /*  SHOOTING METEOR                                                    */
@@ -91,37 +92,31 @@ function Sparkle({ delay, x }: { delay: number; x: string }) {
 const sparkles = Array.from({ length: 25 }, (_, i) => ({ id: i, delay: Math.random() * 5, x: `${Math.random() * 100}%` }));
 
 /* ================================================================== */
-/*  PETAL                                                              */
+/*  FLOATING PI SYMBOL                                                 */
 /* ================================================================== */
-function Petal({ delay, x }: { delay: number; x: string }) {
+const piDigits = ['3', '.', '1', '4', '1', '5', '9', '2', '6', '5', '3', '5', '8', '9', '7', '9', '3', '2', '3', '8'];
+
+function FloatingPi({ delay, x, digit }: { delay: number; x: string; digit: string }) {
   return (
     <motion.div
-      className="absolute pointer-events-none select-none"
+      className="absolute pointer-events-none select-none text-cyan-400/20 font-bold text-lg"
       style={{ left: x, top: "-5%" }}
-      animate={{ y: ["0vh", "105vh"], x: [0, 25, -15, 30, 0], rotate: [0, 120, 240, 360], opacity: [0, 0.5, 0.5, 0] }}
+      animate={{ y: ["0vh", "105vh"], x: [0, 25, -15, 30, 0], rotate: [0, 30, -30, 0], opacity: [0, 0.4, 0.4, 0] }}
       transition={{ duration: 12 + Math.random() * 8, delay, repeat: Infinity, ease: "linear" }}
     >
-      <svg width="14" height="14" viewBox="0 0 16 16">
-        <defs>
-          <linearGradient id={`petal-${delay}`} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="rgba(244, 114, 182, 0.6)" />
-            <stop offset="100%" stopColor="rgba(168, 85, 247, 0.3)" />
-          </linearGradient>
-        </defs>
-        <ellipse cx="8" cy="8" rx="6" ry="8" fill={`url(#petal-${delay})`} />
-      </svg>
+      {digit}
     </motion.div>
   );
 }
 
-const petals = Array.from({ length: 20 }, (_, i) => ({ id: i, delay: Math.random() * 6, x: `${Math.random() * 100}%` }));
+const floatingPis = Array.from({ length: 20 }, (_, i) => ({ id: i, delay: Math.random() * 6, x: `${Math.random() * 100}%`, digit: piDigits[i % piDigits.length] }));
 
 /* ================================================================== */
 /*  RUNNING MARQUEE                                                    */
 /* ================================================================== */
 const marqueeItems = [
-  "Empowerment", "✿", "Courage", "♀", "Strength", "✿", "Equality", "♀",
-  "Resilience", "✿", "Leadership", "♀", "Innovation", "✿", "Unity", "♀",
+  "Mathematics", "π", "Knowledge", "∞", "Discovery", "π", "Logic", "∞",
+  "Innovation", "π", "Precision", "∞", "Curiosity", "π", "Wisdom", "∞",
 ];
 
 function Marquee({ direction = 1, speed = 30 }: { direction?: number; speed?: number }) {
@@ -133,7 +128,7 @@ function Marquee({ direction = 1, speed = 30 }: { direction?: number; speed?: nu
         transition={{ duration: speed, repeat: Infinity, ease: "linear" }}
       >
         {[...marqueeItems, ...marqueeItems].map((item, i) => (
-          <span key={i} className={item.length > 2 ? "text-slate-600 uppercase tracking-[0.2em]" : "text-pink-500/60 "}>
+          <span key={i} className={item.length > 2 ? "text-slate-600 uppercase tracking-[0.2em]" : "text-cyan-500/60"}>
             {item}
           </span>
         ))}
@@ -230,24 +225,6 @@ function TiltCard({ children, className }: { children: React.ReactNode; classNam
   );
 }
 
-/* ================================================================== */
-/*  ANIMATED RING PULSE (behind countdown)                             */
-/* ================================================================== */
-function RingPulse() {
-  return (
-    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-      {[0, 1, 2].map((i) => (
-        <motion.div
-          key={i}
-          className="absolute rounded-full border border-cyan-500/20"
-          style={{ width: 300 + i * 80, height: 300 + i * 80 }}
-          animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.08, 0.3] }}
-          transition={{ duration: 4, delay: i * 1.2, repeat: Infinity, ease: "easeInOut" }}
-        />
-      ))}
-    </div>
-  );
-}
 
 /* ================================================================== */
 /*  NPM INSTALL CREDITS                                                */
@@ -364,84 +341,7 @@ function NpmInstallCredits() {
   );
 }
 
-/* ================================================================== */
-/*  COUNTDOWN TIMER                                                    */
-/* ================================================================== */
-const EVENT_DATE = new Date("2026-03-16T09:00:00+05:30");
 
-function useCountdown() {
-  const [timeLeft, setTimeLeft] = useState(getTimeLeft());
-
-  function getTimeLeft() {
-    const diff = Math.max(0, EVENT_DATE.getTime() - Date.now());
-    return {
-      days: Math.floor(diff / 86400000),
-      hours: Math.floor((diff % 86400000) / 3600000),
-      minutes: Math.floor((diff % 3600000) / 60000),
-      seconds: Math.floor((diff % 60000) / 1000),
-      ended: diff <= 0,
-    };
-  }
-
-  useEffect(() => {
-    const id = setInterval(() => setTimeLeft(getTimeLeft()), 1000);
-    return () => clearInterval(id);
-  }, []);
-
-  return timeLeft;
-}
-
-/* Flip-style countdown digit */
-function FlipDigit({ value }: { value: number }) {
-  return (
-    <div className="relative w-10 h-14 sm:w-14 sm:h-18 overflow-hidden">
-      <AnimatePresence mode="popLayout">
-        <motion.div
-          key={value}
-          initial={{ y: -60, opacity: 0, rotateX: -90 }}
-          animate={{ y: 0, opacity: 1, rotateX: 0 }}
-          exit={{ y: 60, opacity: 0, rotateX: 90 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-          className="absolute inset-0 flex items-center justify-center text-2xl sm:text-4xl font-bold bg-gradient-to-b from-white to-cyan-200 bg-clip-text text-transparent tabular-nums"
-          style={{ transformPerspective: 200 }}
-        >
-          {String(value).padStart(2, "0")}
-        </motion.div>
-      </AnimatePresence>
-    </div>
-  );
-}
-
-function CountdownUnit({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="flex flex-col items-center">
-      <div className="relative rounded-2xl bg-white/[0.06] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-cyan-500/10 overflow-hidden">
-        {/* Shine strip */}
-        <motion.div
-          className="absolute inset-0 pointer-events-none"
-          style={{ background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.05) 45%, transparent 50%)" }}
-          animate={{ x: ["-100%", "200%"] }}
-          transition={{ duration: 3, repeat: Infinity, repeatDelay: 4 }}
-        />
-        <FlipDigit value={value} />
-      </div>
-      <span className="mt-2 text-[10px] sm:text-xs font-medium text-slate-500 uppercase tracking-widest">{label}</span>
-    </div>
-  );
-}
-
-/* ================================================================== */
-/*  VENUS SYMBOL                                                       */
-/* ================================================================== */
-function VenusSymbol({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="9" r="6" />
-      <line x1="12" y1="15" x2="12" y2="23" />
-      <line x1="9" y1="19" x2="15" y2="19" />
-    </svg>
-  );
-}
 
 /* ================================================================== */
 /*  ANIMATED BORDER BUTTON                                             */
@@ -485,7 +385,6 @@ function GlowButton({ children, onClick }: { children: React.ReactNode; onClick:
 /* ================================================================== */
 const stagger = { hidden: {}, show: { transition: { staggerChildren: 0.12, delayChildren: 0.2 } } };
 const fadeUp = { hidden: { opacity: 0, y: 30 }, show: { opacity: 1, y: 0, transition: { duration: 0.7, ease: "easeOut" as const } } };
-const scaleIn = { hidden: { opacity: 0, scale: 0.8 }, show: { opacity: 1, scale: 1, transition: { duration: 0.8, ease: [0.16, 1, 0.3, 1] as const } } };
 
 /* ================================================================== */
 /*  LANDING PAGE                                                       */
@@ -497,7 +396,6 @@ export default function LandingPage() {
   const heroOpacity = useTransform(scrollYProgress, [0, 0.18], [1, 0]);
   const heroScale = useTransform(scrollYProgress, [0, 0.18], [1, 0.92]);
   const heroBgY = useTransform(scrollYProgress, [0, 0.3], [0, -100]);
-  const countdown = useCountdown();
 
   // Mouse glow
   const mouseX = useMotionValue(0);
@@ -540,9 +438,9 @@ export default function LandingPage() {
         {meteors.map((m) => <Meteor key={m.id} delay={m.delay} />)}
       </div>
 
-      {/* Petals */}
+      {/* Floating Pi Digits */}
       <div className="fixed inset-0 pointer-events-none overflow-hidden z-1">
-        {petals.map((p) => <Petal key={p.id} {...p} />)}
+        {floatingPis.map((p) => <FloatingPi key={p.id} delay={p.delay} x={p.x} digit={p.digit} />)}
       </div>
 
       {/* Sparkles */}
@@ -571,85 +469,142 @@ export default function LandingPage() {
             variants={fadeUp}
             className="inline-flex items-center gap-2.5 px-5 py-2 rounded-full bg-white/[0.05] backdrop-blur-md border border-white/[0.1] shadow-lg shadow-cyan-500/5"
           >
-            <motion.span animate={{ rotate: [0, 360] }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} className="text-pink-400 text-sm">
-              ✿
+            <motion.span animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }} className="text-cyan-400 text-lg font-bold">
+              π
             </motion.span>
-            <span className="text-xs font-semibold text-pink-300/90 tracking-wider uppercase">International Women&apos;s Day</span>
-            <motion.span animate={{ rotate: [360, 0] }} transition={{ duration: 6, repeat: Infinity, ease: "linear" }} className="text-pink-400 text-sm">
-              ✿
+            <span className="text-xs font-semibold text-cyan-300/90 tracking-wider uppercase">March 14th Celebration</span>
+            <motion.span animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity, ease: "easeInOut", delay: 1 }} className="text-cyan-400 text-lg font-bold">
+              π
             </motion.span>
           </motion.div>
 
           {/* Title */}
           <motion.h1 variants={fadeUp} className="text-5xl sm:text-7xl md:text-8xl font-extrabold leading-[1.05] tracking-tight">
-            <span className="inline-flex items-center gap-3 sm:gap-5 justify-center">
-              <motion.span animate={{ rotate: [0, 15, -15, 0], scale: [1, 1.1, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}>
-                <VenusSymbol className="w-8 h-8 sm:w-12 sm:h-12 text-pink-400/40" />
-              </motion.span>
-              <span className="text-white">Celebrating</span>
-              <motion.span animate={{ rotate: [0, -15, 15, 0], scale: [1, 1.1, 1] }} transition={{ duration: 4, repeat: Infinity, ease: "easeInOut", delay: 2 }}>
-                <VenusSymbol className="w-8 h-8 sm:w-12 sm:h-12 text-pink-400/40" />
-              </motion.span>
-            </span>
-            <br />
-            <span className="landing-gradient-text">Women&apos;s Day</span>
+            <span className="landing-gradient-text">PI DAY Quiz</span>
           </motion.h1>
 
           {/* Glowing line */}
           <motion.div
             variants={fadeUp}
             className="h-px w-40 mx-auto"
-            style={{ background: "linear-gradient(90deg, transparent, rgba(168,85,247,0.6), rgba(236,72,153,0.6), transparent)" }}
+            style={{ background: "linear-gradient(90deg, transparent, rgba(6,182,212,0.6), rgba(59,130,246,0.6), transparent)" }}
           />
 
           {/* Typewriter subtitle */}
-          <motion.div variants={fadeUp} className="text-base sm:text-lg text-slate-400 max-w-lg leading-relaxed">
+          <motion.div variants={fadeUp} className="text-base sm:text-lg text-slate-200 max-w-lg leading-relaxed">
             <Typewriter
-              text="Hosted by CSA & Department of AMCS — PSG College of Technology"
+              text="Hosted by CSA & Department of AMCS PSG CT"
               delay={1500}
               className="text-slate-400"
             />
           </motion.div>
 
-          {/* Date chip */}
-          <motion.div
-            variants={fadeUp}
-            className="flex items-center gap-3 px-5 py-2.5 rounded-xl bg-white/[0.05] border border-white/[0.08] backdrop-blur-md"
-          >
-            <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ duration: 2, repeat: Infinity }}>
-              <svg className="w-4 h-4 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
-              </svg>
-            </motion.div>
-            <span className="text-sm font-semibold text-slate-300">16 March 2026</span>
-          </motion.div>
+          {/* Podium Section with Side Credits */}
+          {/* <motion.div variants={fadeUp} className="w-full max-w-6xl flex flex-col lg:flex-row items-center lg:items-center justify-center gap-8 lg:gap-12"> */}
+            {/* Left Side - Quiz Masters */}
+            {/* <div className="text-center lg:flex-1 flex flex-col items-center justify-center">
+              <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Quiz Masters</p>
+              <p className="text-sm font-semibold text-white">Dinesh Veluswamy</p>
+              <p className="text-sm font-semibold text-white">Anu Varshini</p>
+            </div> */}
 
-          {/* Countdown */}
-          <motion.div variants={scaleIn} className="mt-4 relative">
-            <RingPulse />
-            {countdown.ended ? (
-              <motion.div
-                animate={{
-                  boxShadow: ["0 0 30px rgba(6,182,212,0.3)", "0 0 80px rgba(6,182,212,0.5)", "0 0 30px rgba(6,182,212,0.3)"],
-                  scale: [1, 1.03, 1],
-                }}
-                transition={{ duration: 2, repeat: Infinity }}
-                className="px-10 py-5 rounded-2xl bg-gradient-to-r from-cyan-600 to-pink-600 text-white font-bold text-2xl shadow-2xl"
-              >
-                Event is Live!
-              </motion.div>
-            ) : (
-              <div className="flex items-center gap-2 sm:gap-3">
-                <CountdownUnit value={countdown.days} label="Days" />
-                <span className="text-2xl font-bold text-cyan-400/30 mt-[-20px]">:</span>
-                <CountdownUnit value={countdown.hours} label="Hours" />
-                <span className="text-2xl font-bold text-cyan-400/30 mt-[-20px]">:</span>
-                <CountdownUnit value={countdown.minutes} label="Mins" />
-                <span className="text-2xl font-bold text-cyan-400/30 mt-[-20px]">:</span>
-                <CountdownUnit value={countdown.seconds} label="Secs" />
-              </div>
-            )}
-          </motion.div>
+            {/* Center - Podium */}
+            {/* <div className="flex-shrink-0">
+              <Podium
+                entries={[
+                  { teamName: "Team3", totalScore: 145, rank: 1, members: ["Prasharadha K", "Dhishaa S"] },
+                  { teamName: "Team1", totalScore: 135, rank: 2, members: ["Narain Surya R S", "Sachin K"] },
+                  { teamName: "Team6", totalScore: 85, rank: 3, members: ["Ajay H", "Arul Kevin J"] },
+                ]}
+              />
+            </div> */}
+
+            {/* Right Side - Developed by */}
+            {/* <div className="text-center lg:flex-1 flex flex-col items-center justify-center">
+              <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Developed by</p>
+              <p className="text-sm font-semibold text-white">Hemanth Vasudev N P</p>
+              <p className="text-sm font-semibold text-white">Nithiish S D</p>
+              <p className="text-sm font-semibold text-white">Jithendra U</p>
+            </div>
+          </motion.div> */}
+
+          {/* Tech Team & Organization
+          <motion.div variants={fadeUp} className="text-center space-y-3">
+            <p className="text-xs text-cyan-400 uppercase tracking-widest font-semibold">Tech Team</p>
+            <div className="h-px w-24 mx-auto bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
+            <p className="text-sm font-semibold bg-gradient-to-r from-cyan-400 via-blue-400 to-purple-400 bg-clip-text text-transparent">
+              CSA & Department of Applied Mathematics and Computational Sciences
+            </p>
+            <p className="text-sm font-bold bg-gradient-to-r from-yellow-400 via-orange-400 to-pink-400 bg-clip-text text-transparent">
+              PSG College of Technology
+            </p>
+          </motion.div> */}
+
+            {/* Podium Section with Side Credits */}
+{/* <motion.div variants={fadeUp} className="flex flex-col items-center justify-center isolate"> */}
+  
+  {/* Left - Quiz Masters */}
+  {/* <div className="flex items-center justify-center" style={{ zIndex: 10, position: 'relative' }}>
+    <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Quiz Masters</p>
+    <p className="text-sm font-semibold text-white">Dinesh Veluswamy</p>
+    <p className="text-sm font-semibold text-white">Anu Varshini</p>
+  </div> */}
+
+  {/* Center - Podium */}
+  {/* <div className="flex items-center justify-center" style={{ zIndex: 10, position: 'relative' }}>
+    <Podium
+      entries={[
+        { teamName: "Team3", totalScore: 145, rank: 1, members: ["Prasharadha K", "Dhishaa S"] },
+        { teamName: "Team1", totalScore: 135, rank: 2, members: ["Carol White", "David Brown"] },
+        { teamName: "Team6", totalScore: 85, rank: 3, members: ["Eva Green", "Frank Miller"] },
+      ]}
+    />
+  </div> */}
+
+  {/* Right - Developed by */}
+  {/* <div className="flex flex-col items-center justify-center isolate">
+    <p className="text-xs text-slate-500 uppercase tracking-widest mb-2">Developed by</p>
+    <p className="text-sm font-semibold text-white">Hemanth Vasudev N P</p>
+    <p className="text-sm font-semibold text-white">Nithiish S D</p>
+    <p className="text-sm font-semibold text-white">Jithendra U</p>
+  </div>
+
+</motion.div> */}
+
+{/* Podium Section with Side Credits */}
+<motion.div variants={fadeUp} className="w-full max-w-7xl flex flex-col md:flex-row items-center justify-center gap-12 lg:gap-32 mt-12 px-6">
+
+  {/* Left - Quiz Masters */}
+  <div className="flex flex-col items-center justify-center min-w-[260px]">
+    <p className="text-lg landing-gradient-text uppercase tracking-[0.25em] font-extrabold mb-4 whitespace-nowrap">Quiz Masters</p>
+    <div className="space-y-2 text-center">
+      <p className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] whitespace-nowrap">Dinesh Veluswamy</p>
+      <p className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] whitespace-nowrap">Anu Varshini</p>
+    </div>
+  </div>
+
+  {/* Center - Podium */}
+  <div className="flex items-center justify-center order-first md:order-none" style={{ position: 'relative', zIndex: 10 }}>
+    <Podium
+      entries={[
+        { teamName: "Team3", totalScore: 145, rank: 1, members: ["Prasharadha K", "Dhishaa S"] },
+        { teamName: "Team1", totalScore: 135, rank: 2, members: ["Narain Surya R S", "Sachin K"] },
+        { teamName: "Team6", totalScore: 85, rank: 3, members: ["Ajay H", "Arun Kevin J"] },
+      ]}
+    />
+  </div>
+
+  {/* Right - Developed by */}
+  <div className="flex flex-col items-center justify-center min-w-[260px]">
+    <p className="text-lg landing-gradient-text uppercase tracking-[0.25em] font-extrabold mb-4 whitespace-nowrap">Developed by</p>
+    <div className="space-y-2 text-center">
+      <p className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] whitespace-nowrap">Hemanth Vasudev N P</p>
+      <p className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] whitespace-nowrap">Nithiish S D</p>
+      <p className="text-2xl font-black text-white drop-shadow-[0_0_10px_rgba(255,255,255,0.3)] whitespace-nowrap">Jithendra U</p>
+    </div>
+  </div>
+
+</motion.div>
 
           {/* Scroll hint */}
           <motion.div variants={fadeUp} className="mt-14" animate={{ y: [0, 12, 0] }} transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}>
@@ -726,13 +681,17 @@ export default function LandingPage() {
       {/* ── DIVIDER ── */}
       <div className="relative z-10 flex items-center justify-center py-4">
         <motion.div className="h-px w-24" animate={{ scaleX: [0.5, 1, 0.5], opacity: [0.3, 0.8, 0.3] }} transition={{ duration: 3, repeat: Infinity }}
-          style={{ background: "linear-gradient(90deg, transparent, rgba(168,85,247,0.5))" }}
+          style={{ background: "linear-gradient(90deg, transparent, rgba(6,182,212,0.5))" }}
         />
-        <motion.div animate={{ rotate: [0, 360] }} transition={{ duration: 20, repeat: Infinity, ease: "linear" }}>
-          <VenusSymbol className="mx-4 w-5 h-5 text-pink-400/30" />
-        </motion.div>
+        <motion.span
+          animate={{ rotate: [0, 360] }}
+          transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+          className="mx-4 text-xl font-bold text-cyan-400/30"
+        >
+          π
+        </motion.span>
         <motion.div className="h-px w-24" animate={{ scaleX: [0.5, 1, 0.5], opacity: [0.3, 0.8, 0.3] }} transition={{ duration: 3, repeat: Infinity, delay: 1.5 }}
-          style={{ background: "linear-gradient(270deg, transparent, rgba(168,85,247,0.5))" }}
+          style={{ background: "linear-gradient(270deg, transparent, rgba(6,182,212,0.5))" }}
         />
       </div>
 
@@ -751,9 +710,9 @@ export default function LandingPage() {
                 key={i}
                 animate={{ scale: [1, 1.3, 1], rotate: [0, 20, 0] }}
                 transition={{ duration: 3, repeat: Infinity, delay: d }}
-                className="text-pink-500/30 text-2xl"
+                className="text-cyan-500/50 text-2xl font-bold"
               >
-                {i === 1 ? <VenusSymbol className="w-6 h-6 text-cyan-400/30" /> : "✿"}
+                π
               </motion.span>
             ))}
           </div>
@@ -765,16 +724,16 @@ export default function LandingPage() {
             viewport={{ once: true }}
             transition={{ duration: 1.5, delay: 0.3 }}
           >
-            &ldquo;There is no limit to what we, as women, can accomplish.&rdquo;
+            &ldquo;Mathematics is not about numbers, equations, or algorithms; it is about understanding.&rdquo;
           </motion.p>
           <motion.p
-            className="mt-4 text-sm font-semibold bg-gradient-to-r from-pink-400 to-cyan-400 bg-clip-text text-transparent"
+            className="mt-4 text-sm font-semibold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent"
             initial={{ opacity: 0, x: -20 }}
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
             transition={{ duration: 0.6, delay: 0.8 }}
           >
-            — Michelle Obama
+            — William Paul Thurston
           </motion.p>
           <div className="mt-5 mx-auto h-px w-16 bg-gradient-to-r from-transparent via-cyan-500/40 to-transparent" />
         </motion.blockquote>
@@ -803,8 +762,8 @@ export default function LandingPage() {
           className="mt-16 text-center space-y-2"
         >
           <p className="text-xs text-slate-600">&copy; 2026 QFactor — PSG College of Technology</p>
-          <p className="text-xs bg-gradient-to-r from-pink-400 to-cyan-400 bg-clip-text text-transparent font-medium">
-            Happy International Women&apos;s Day ✿
+          <p className="text-xs bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent font-medium">
+            Happy Pi Day! 🥧 3.14159...
           </p>
         </motion.div>
       </footer>
